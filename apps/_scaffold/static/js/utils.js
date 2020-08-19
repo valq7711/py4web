@@ -197,7 +197,7 @@ utils.trap_form = function (action, element_id) {
         form.dataset['py4web_target'] = target;
         var url = form.action;
         if (url === '' || url === '#' || url === void 0) url = action;
-        var clickable = 'input[type=submit], input[type=image], button[type=submit], button:not([type])';        
+        var clickable = 'input[type=submit], input[type=image], button[type=submit], button:not([type])';
         form.querySelectorAll(clickable).forEach(function (element) {
             element.onclick = function(event) {
                 event.preventDefault();
@@ -216,10 +216,8 @@ utils.load_and_trap = function (method, url, form_data, target) {
     /* if target is not there, fill it with something that there isn't in the page*/
     if (target === void 0 || target === '') target = 'py4web_none';
     var onsuccess = function(res) {
-        Q('#'+target)[0].innerHTML = res.data;        
+        Q('#'+target)[0].innerHTML = res.data;
         utils.trap_form(url, target);
-        var flash = res.headers['py4web-flash']
-        if (flash) utils.flash(JSON.parse(flash));
     };
     var onerror = function(res) {
         alert('ajax error');
@@ -230,7 +228,7 @@ utils.load_and_trap = function (method, url, form_data, target) {
 utils.handle_components = function() {
     Q('py4web-component').forEach(function(element) {
         utils.load_and_trap('GET', element.attributes.url.value, null, element.attributes.id.value);
-    });    
+    });
 };
 
 utils.handle_flash = function() {
@@ -242,15 +240,17 @@ utils.handle_flash = function() {
         };
     };
     var make_handler = function(element) {
-        return function (event) { 
+        return function (event) {
             var id = 'notification-{0}'.format([element.dataset.counter]);
             element.dataset.counter = parseInt(element.dataset.counter) + 1;
+            var e_detail = event.detail; // event.detail is readonly!
+            if (typeof e_detail == "string"){e_detail = {message: e_detail}}
             var node = document.createElement("div");
-            node.innerHTML = '<div role="alert"><span class="close"></span>{0}</div>'.format([event.detail.message]);
-            node = Q('[role="alert"]', node)[0];
-            node.classList.add(event.detail.class||'info');
+            node.innerHTML = '<div class="notification"><button class="delete"></button>{0}</div>'.format([e_detail.message]);
+            node = Q('.notification', node)[0];
+            if (e_detail.class) node.classList.add(e_detail.class);
             element.appendChild(node);
-            Q('[role="alert"] .close',node)[0].onclick = make_delete_handler(node);
+            Q('.delete',node)[0].onclick = make_delete_handler(node);
         };
     };
     if (element) {
