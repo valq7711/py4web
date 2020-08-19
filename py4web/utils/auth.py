@@ -2,13 +2,14 @@ import base64
 import calendar
 import datetime
 import hashlib
+import json
 import re
 import time
 import urllib
 import uuid
 
 from py4web import redirect, request, response, abort, URL, action, Field, HTTP
-from py4web.core import Fixture, Template, REGEX_APPJSON
+from py4web.core import Fixture, Template, REGEX_APPJSON, bottle
 from py4web.utils.form import Form
 
 from pydal.validators import (
@@ -518,6 +519,8 @@ class Auth(Fixture):
                 del data["errors"]
             data["status"] = data.get("status", "success")
             data["code"] = data.get("code", 200)
+            if data["code"] != 200:
+                raise bottle.HTTPResponse(status = data["code"], body = json.dumps(data, ensure_ascii=False))
             return data
         # logout/
         elif path == "logout":
