@@ -1,7 +1,10 @@
 import os
 import unittest
-import bottle
-from py4web.core import Session, DAL, request, HTTP, Field, request, bottle
+import sys
+
+#sys.path.append(os.path.normpath(os.path.join(__file__,'../..')))
+
+from py4web.core import Session, DAL, request, HTTP, Field, bottle
 from py4web.utils.auth import Auth, AuthAPI, DefaultAuthForms
 
 
