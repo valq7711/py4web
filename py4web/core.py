@@ -53,7 +53,8 @@ except:
 
 # Third party modules
 import click
-import bottle
+#import bottle
+from .poured_bottle import pbottle as bottle
 import jwt  # this is PyJWT
 import yatl
 import pydal
@@ -62,6 +63,8 @@ from pydal._compat import to_native, to_bytes
 import threadsafevariable
 
 bottle.BaseRequest.MEMFILE_MAX = 16 * 1024 * 1024
+
+bottle.app_make()
 
 __all__ = [
     "render",
@@ -128,25 +131,8 @@ def module2filename(module):
 
 
 ########################################################################################
-# fix request.fullpath for the case of domain mapping to app
-# (request.url will be autofixed, since it is based on request.fullpath)
-#########################################################################################
-def monkey_patch_bottle():
-    urljoin = urllib.parse.urljoin
-    @property
-    def fullpath(self):
-        appname = self.get_header('x-py4web-appname', '/')
-        return urljoin(self.script_name, self.path[len(appname):])
-    setattr(bottle.BaseRequest, 'fullpath', fullpath)
-
-
-monkey_patch_bottle()
-
-
-########################################################################################
 # Implement a O(1) LRU cache and memoize with expiration and monitoring (using linked list)
 #########################################################################################
-
 
 class Node:
     def __init__(self, key=None, value=None, t=None, m=None, prev=None, next=None):
@@ -385,7 +371,7 @@ class Flash(Fixture):
                 data["flash"] = Flash.local.flash or ""
         else:
             if Flash.local.flash is not None:
-                response.headers["component-flash"] = json.dumps(Flash.local.flash)
+                response.headers["Component-Flash"] = json.dumps(Flash.local.flash)
         Flash.local.flash = None
         return data
 
@@ -600,16 +586,12 @@ def URL(
     URL('a','b',vars=dict(x=1),use_appname=False) -> /{script_name?}/a/b?x=1
     """
     if use_appname is None:
-        use_appname = request.headers.get("x-py4web-appname")
+        use_appname = request.environ.get("HTTP_X_PY4WEB_APPNAME")
         use_appname = True if use_appname is None else not use_appname
-    script_name = (
-        request.environ.get("HTTP_X_SCRIPT_NAME", "")
-        or request.environ.get("SCRIPT_NAME", "")
-    ).rstrip("/")
     if parts and parts[0].startswith("/"):
         prefix = ""
     else:
-        prefix = script_name + (
+        prefix = request.script_name.rstrip('/') + (
             "/%s/" % request.app_name
             if (request.app_name != "_default" and use_appname)
             else "/"
@@ -663,7 +645,7 @@ class HTTP(BaseException):
 def redirect(location):
     """our redirect does not delete cookies and headers like bottle.HTTPResponse does;
     it is considered a success, not failure"""
-    response.set_header("Location", location)
+    response.headers["Location"] = location
     raise HTTP(303)
 
 
@@ -769,15 +751,15 @@ class action:
 
     def __call__(self, func):
         """Building the decorator"""
-        trailing = "<:re:/?>"
+        #trailing = "<:re:/?>"
         app_name = action.app_name
         base_path = "" if app_name == "_default" else "/%s" % app_name
         path = (base_path + "/" + self.path).rstrip("/")
         if not func in self.registered:
             func = action.catch_errors(app_name, func)
-        func = bottle.route(path + trailing, **self.kwargs)(func)
+        func = bottle.route(path,  **self.kwargs)(func)
         if path.endswith("/index"):  # /index is always optional
-            func = bottle.route(path[:-6] + trailing, **self.kwargs)(func)
+            func = bottle.route(path[:-6], **self.kwargs)(func)
         self.registered.add(func)
         return func
 
@@ -983,15 +965,10 @@ class Reloader:
         bottle.default_app().add_hook("before_request", hook)
 
     @staticmethod
-    def clear_routes(app_name=None):
+    def clear_routes(app_name=''):
+        routes = app_name + '/*'
         app = bottle.default_app()
-        routes = app.routes[:]
-        app.routes.clear()
-        app.router = bottle.Router()
-        if app_name:
-            for route in routes:
-                if route.rule.rstrip("<:re:/?>")[1:].split("/")[0] != app_name:
-                    app.add_route(route)
+        app.router.remove(routes)
 
     @staticmethod
     def import_apps():
@@ -1063,11 +1040,9 @@ class Reloader:
             app_name = path.split(os.path.sep)[-1]
             prefix = "" if app_name == "_default" else ("/%s" % app_name)
 
-            @bottle.route(prefix + "/static/<filename:path>")
-            @bottle.route(
-                prefix + "/static/_<version:re:\\d+\\.\\d+\\.\\d+>/<filename:path>"
-            )
-            def server_static(filename, static_folder=static_folder, version=None):
+            @bottle.route(prefix + r"/static/:version_fp.re((_\d+\.\d+\.\d+/)?.+)")
+            def server_static(version_fp, static_folder=static_folder, version=None):
+                filename = re.match(r'(_\d+\.\d+\.\d+/)?(.+)', version_fp).group(2)
                 response.headers.setdefault("Pragma", "cache")
                 response.headers.setdefault("Cache-Control", "private")
                 return bottle.static_file(filename, root=static_folder)
@@ -1079,8 +1054,6 @@ class Reloader:
             func = route.callback
             rule = route.rule
             # remove optional trailing / from rule
-            if rule.endswith("<:re:/?>"):
-                rule = rule[:-8]
             routes.append(
                 {
                     "rule": rule,
@@ -1131,10 +1104,7 @@ def error404(error):
         href = "/"
     else:
         href = "/" + guess_app_name
-    script_name = (
-        request.environ.get("HTTP_X_SCRIPT_NAME", "")
-        or request.environ.get("SCRIPT_NAME", "")
-    ).rstrip("/")
+    script_name = request.script_name
     if script_name:
         href = script_name + href
     return error_page(404, button_text=guess_app_name, href=href)
@@ -1283,6 +1253,9 @@ def start_server(args):
 
     if args["watch"] != "off":
         watch(apps_folder, server_config, args["watch"])
+
+    # DEBUG
+    #params["server"] = "wsgiref"
     bottle.run(**params)
 
 
