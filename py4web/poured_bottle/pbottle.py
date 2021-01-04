@@ -168,7 +168,7 @@ class PBottle:
             rhooks.append(func)
 
     def remove_route_hook(self, route, func = None):
-        self.router.reove_hook(route, func)
+        self.router.remove_hook(route, func)
         if not (rhooks := self._route_hooks.get(route)):
             return
         else:

@@ -1,7 +1,7 @@
 import os
 import unittest
 import bottle
-from py4web.core import Session, DAL, request, HTTP, Field, request
+from py4web.core import Session, DAL, request, HTTP, Field, request, bottle
 from py4web.utils.auth import Auth, AuthAPI, DefaultAuthForms
 
 
@@ -15,6 +15,9 @@ class TestAuth(unittest.TestCase):
         self.auth.enable()
         self.auth.action = self.action
         request.app_name = "_scaffold"
+
+    def tearDown(self):
+        bottle.app.router.remove('/*')
 
     def action(self, name, method, query, data):
         request.environ['REQUEST_METHOD'] = method
