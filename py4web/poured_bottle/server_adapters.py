@@ -1,4 +1,6 @@
 
+import threading
+import sys
 
 ###############################################################################
 # Server Adapter ###############################################################
@@ -7,23 +9,26 @@
 
 class ServerAdapter(object):
     quiet = False
+
     def __init__(self, host='127.0.0.1', port=8080, **options):
         self.options = options
         self.host = host
         self.port = int(port)
 
-    def run(self, handler): # pragma: no cover
+    def run(self, handler):  # pragma: no cover
         pass
 
     def __repr__(self):
-        args = ', '.join(['%s=%s'%(k,repr(v)) for k, v in self.options.items()])
+        args = ', '.join(['%s=%s' % (k, repr(v)) for k, v in self.options.items()])
         return "%s(%s)" % (self.__class__.__name__, args)
 
 
 class CGIServer(ServerAdapter):
     quiet = True
-    def run(self, handler): # pragma: no cover
+
+    def run(self, handler):  # pragma: no cover
         from wsgiref.handlers import CGIHandler
+
         def fixed_environ(environ, start_response):
             environ.setdefault('PATH_INFO', '')
             return handler(environ, start_response)
@@ -31,20 +36,20 @@ class CGIServer(ServerAdapter):
 
 
 class FlupFCGIServer(ServerAdapter):
-    def run(self, handler): # pragma: no cover
+    def run(self, handler):  # pragma: no cover
         import flup.server.fcgi
         self.options.setdefault('bindAddress', (self.host, self.port))
         flup.server.fcgi.WSGIServer(handler, **self.options).run()
 
 
 class WSGIRefServer(ServerAdapter):
-    def run(self, app): # pragma: no cover
+    def run(self, app):  # pragma: no cover
         from wsgiref.simple_server import WSGIRequestHandler, WSGIServer
         from wsgiref.simple_server import make_server
         import socket
 
         class FixedHandler(WSGIRequestHandler):
-            def address_string(self): # Prevent reverse DNS lookups please.
+            def address_string(self):  # Prevent reverse DNS lookups please.
                 return self.client_address[0]
             def log_request(*args, **kw):
                 if not self.quiet:
@@ -53,7 +58,7 @@ class WSGIRefServer(ServerAdapter):
         handler_cls = self.options.get('handler_class', FixedHandler)
         server_cls  = self.options.get('server_class', WSGIServer)
 
-        if ':' in self.host: # Fix wsgiref for IPv6 addresses.
+        if ':' in self.host:  # Fix wsgiref for IPv6 addresses.
             if getattr(server_cls, 'address_family') == socket.AF_INET:
                 class server_cls(server_cls):
                     address_family = socket.AF_INET6
@@ -111,7 +116,7 @@ class MeinheldServer(ServerAdapter):
 
 class FapwsServer(ServerAdapter):
     """ Extremely fast webserver using libev. See http://www.fapws.org/ """
-    def run(self, handler): # pragma: no cover
+    def run(self, handler):  # pragma: no cover
         import fapws._evwsgi as evwsgi
         from fapws import base, config
         port = self.port
@@ -119,11 +124,8 @@ class FapwsServer(ServerAdapter):
             # fapws3 silently changed its API in 0.5
             port = str(port)
         evwsgi.start(self.host, port)
-        # fapws3 never releases the GIL. Complain upstream. I tried. No luck.
-        if 'BOTTLE_CHILD' in os.environ and not self.quiet:
-            _stderr("WARNING: Auto-reloading does not work with Fapws3.\n")
-            _stderr("         (Fapws3 breaks python thread support)\n")
         evwsgi.set_base_module(base)
+
         def app(environ, start_response):
             environ['wsgi.multiprocess'] = False
             return handler(environ, start_response)
@@ -133,11 +135,11 @@ class FapwsServer(ServerAdapter):
 
 class TornadoServer(ServerAdapter):
     """ The super hyped asynchronous server by facebook. Untested. """
-    def run(self, handler): # pragma: no cover
+    def run(self, handler):  # pragma: no cover
         import tornado.wsgi, tornado.httpserver, tornado.ioloop
         container = tornado.wsgi.WSGIContainer(handler)
         server = tornado.httpserver.HTTPServer(container)
-        server.listen(port=self.port,address=self.host)
+        server.listen(port=self.port, address=self.host)
         tornado.ioloop.IOLoop.instance().start()
 
 
@@ -188,20 +190,15 @@ class GeventServer(ServerAdapter):
         if not isinstance(threading.local(), local.local):
             msg = "Bottle requires gevent.monkey.patch_all() (before import)"
             raise RuntimeError(msg)
-        if self.options.pop('fast', None):
-            depr('The "fast" option has been deprecated and removed by Gevent.')
         if self.quiet:
             self.options['log'] = None
         address = (self.host, self.port)
         server = pywsgi.WSGIServer(address, handler, **self.options)
-        if 'BOTTLE_CHILD' in os.environ:
-            import signal
-            signal.signal(signal.SIGINT, lambda s, f: server.stop())
         server.serve_forever()
 
 
 class GeventSocketIOServer(ServerAdapter):
-    def run(self,handler):
+    def run(self, handler):
         from socketio import server
         address = (self.host, self.port)
         server.SocketIOServer(address, handler, **self.options).serve_forever()
@@ -241,7 +238,7 @@ class RocketServer(ServerAdapter):
     """ Untested. """
     def run(self, handler):
         from rocket import Rocket
-        server = Rocket((self.host, self.port), 'wsgi', { 'wsgi_app' : handler })
+        server = Rocket((self.host, self.port), 'wsgi', {'wsgi_app': handler})
         server.start()
 
 
@@ -262,6 +259,7 @@ class AutoServer(ServerAdapter):
             except ImportError:
                 pass
 
+
 server_names = {
     'cgi': CGIServer,
     'flup': FlupFCGIServer,
@@ -278,10 +276,8 @@ server_names = {
     'gunicorn': GunicornServer,
     'eventlet': EventletServer,
     'gevent': GeventServer,
-    'geventSocketIO':GeventSocketIOServer,
+    'geventSocketIO': GeventSocketIOServer,
     'rocket': RocketServer,
-    'bjoern' : BjoernServer,
+    'bjoern': BjoernServer,
     'auto': AutoServer,
 }
-
-

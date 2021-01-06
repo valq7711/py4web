@@ -1,19 +1,25 @@
+#!/usr/bin/env python3
 
 import os
-import json
-import re
-from  enum import IntEnum
+from enum import IntEnum
 common_pref = os.path.commonprefix
+
+__author__ = "Valery Kucherov <valq7711@gmail.com>"
+__copyright__ = "Copyright (C) 2021 Valery Kucherov"
+__license__ = "MIT"
+__version__ = "0.0.3"
+
 
 KEY = 0
 IDX = 1
-WEIGHT = 2
+WEIGHT = 2  # doesn`t use at the moment
 PARAMS = 3
 FILTER = 4
 IS_EXCLUSIVE = 5
 HOOKS = 6
 DATA = 7
 OFFSET = 8
+
 
 # mismatch types
 class MismatchType(IntEnum):
@@ -23,12 +29,13 @@ class MismatchType(IntEnum):
     FILTER = 4
     EXCLUSIVITY = 5
 
+
 class RadiDictError(Exception):
     pass
 
+
 class RadiDictKeyError(RadiDictError):
     def __init__(self, msg, **kw):
-        #msg = msg.replace(r'\', r"\\\\")
         super().__init__(msg)
         self.__err_args__ = kw
 
@@ -37,12 +44,13 @@ class RadiDictKeyError(RadiDictError):
 
 
 class RadiDict:
-    def __init__(self,*,
-                path_sep = '/',
-                param_token = '\r',
-                is_exclusive = False
+    def __init__(
+        self, *,
+        path_sep = '/',
+        param_token = '\r',
+        is_exclusive = False
     ):
-        self.path_sep  = path_sep
+        self.path_sep = path_sep
         self.param_token = param_token
         self.is_exclusive = is_exclusive
         self.root = self._make_node(key = '/')
@@ -50,9 +58,8 @@ class RadiDict:
     def _token_pos(self, s):
         return ret if (ret := s.find(self.param_token)) >= 0 else len(s)
 
-
-    def _make_node(self, key, *, idx = None,  data = None, weight = 0, children = None,  params = None, filter = None, is_exclusive = False, hooks = None):
-        return  [
+    def _make_node(self, key, *, idx = None, data = None, weight = 0, children = None, params = None, filter = None, is_exclusive = False, hooks = None):
+        return [
             key,
             idx,
             weight,
@@ -68,7 +75,6 @@ class RadiDict:
 
         keyerror = RadiDictKeyError
         ckey = child[KEY]
-        pkey = pnode[KEY]
 
         if pnode[IDX]:
             has_token = pnode[IDX][-1] == self.param_token and pnode[IDX][-1]
@@ -96,11 +102,12 @@ class RadiDict:
         return child
 
     def _split(self, pnode, split_idx:int = None, *, by_key = None):
+        keyerror = RadiDictKeyError
         key = pnode[KEY]
         if by_key:
             split_idx = len(common_pref([key, by_key]))
             if not by_key or not key[split_idx:]:
-                raise keyerror(f'something went wrong')
+                raise keyerror('something went wrong')
         new_key = key[:split_idx]
         key_rest = key[split_idx:]
         node = pnode[:]
@@ -113,12 +120,13 @@ class RadiDict:
         node[KEY] = key_rest
         return pnode if not by_key else (pnode, split_idx)
 
-
     def _try_merge(self, pnode):
-        if pnode[DATA] or pnode[HOOKS]\
-        or not pnode[IDX] or len(pnode[IDX]) !=1 \
-        or pnode[KEY] == self.param_token \
-        or pnode[IDX] == self.param_token: # i.e. child is token
+        if (
+            pnode[DATA] or pnode[HOOKS]
+            or not pnode[IDX] or len(pnode[IDX]) != 1
+            or pnode[KEY] == self.param_token
+            or pnode[IDX] == self.param_token
+        ):  # i.e. child is token
             return
 
         child = pnode[OFFSET]
@@ -130,13 +138,14 @@ class RadiDict:
         '''
         if route_pattern is sliced  param_exclusions, param_filters should be also sliced
         '''
+
         route = route_pattern
         TOKEN = self.param_token
 
         i = 0
         param_idx = 0
         while i < len(route):
-            args = {} # new node args
+            args = {}  # new node args
             route_rest = route[i:]
             key_len = route_rest.find(TOKEN)
             if key_len == 0:
@@ -144,7 +153,7 @@ class RadiDict:
                 key_len = 1
                 args['is_exclusive'] = param_exclusions[param_idx]
                 args['filter'] = param_filters[param_idx]
-                #param_idx += 1
+                # param_idx += 1
             elif key_len > 0:
                 route_key = route_rest[: key_len]
             # no tokens
@@ -193,11 +202,11 @@ class RadiDict:
                 data = data,
                 node = node
             )
-            msg = msg.format(**args) + '\n  ' + '\n  '.join([
+            msg = msg.format(**args) + '\n ' + '\n  '.join([
                 'matched:   {matched}',
                 'route:     {route}'
             ]).format(**args)
-            raise RadiDictKeyError( msg, **args)
+            raise RadiDictKeyError(msg, **args)
 
         route = route_pattern
         prm_exclusions, prm_filters, prm_keys = self.params_unpack(params)
@@ -214,7 +223,7 @@ class RadiDict:
             mismatch = False if ptr >= len(route) else MismatchType.WHOLE
 
         if not mismatch:
-            for item_idx, item in [(DATA, data),(HOOKS, hooks)]:
+            for item_idx, item in [(DATA, data), (HOOKS, hooks)]:
                 if item is None:
                     continue
                 if node[item_idx] and not overwrite:
@@ -225,12 +234,11 @@ class RadiDict:
             return
         else:
             try:
-                self._make_route( node, route[ptr:], data, hooks, prm_exclusions[prm_idx:], prm_filters[prm_idx:], prm_keys  )
+                self._make_route(node, route[ptr:], data, hooks, prm_exclusions[prm_idx:], prm_filters[prm_idx:], prm_keys)
             except RadiDictKeyError as e:
                 msg = e.args[0]
-                msg = msg.format(ckey = prm_keys[prm_idx + e.param_idx], ptoken = '<param>' )
+                msg = msg.format(ckey = prm_keys[prm_idx + e.param_idx], ptoken = '<param>')
                 error(f'Key error: {msg}')
-
 
     def _match(self, route_pattern, param_exclusions:list = None, param_filters:list = None, pnode = None):
         pnode = pnode if pnode is not None else self.root
@@ -239,7 +247,6 @@ class RadiDict:
         L:int = len(route)
         i = 0
         param_idx = 0
-        exclusivity_mismatch = False
         mismatch = None
         key_end = 0
         stack = [pnode]
@@ -250,35 +257,38 @@ class RadiDict:
             kidx = 0
             for ic, c in enumerate(pnode_idx or []):
                 if c == c0:
-                    kidx = ic;  break # found!
-            else: break # not found - break while
+                    kidx = ic; break  # found!
+            else: break  # not found - break while
 
-            key = (pnode := pnode[kidx+OFFSET])[KEY]
+            key = (pnode := pnode[kidx + OFFSET])[KEY]
             key_end = i + len(key)
             stack.append(pnode)
-            if  key == route[i: key_end]:
+            if key == route[i: key_end]:
                 if key == TOKEN:
-                    if  param_exclusions \
-                    and pnode[IS_EXCLUSIVE] != param_exclusions[param_idx]:
+                    if (
+                        param_exclusions
+                        and pnode[IS_EXCLUSIVE] != param_exclusions[param_idx]
+                    ):
                         mismatch = MismatchType.EXCLUSIVITY
-                        break # while: fail
-                    elif param_filters \
-                    and pnode[FILTER] != param_filters[param_idx]:
+                        break  # while: fail
+                    elif (
+                        param_filters
+                        and pnode[FILTER] != param_filters[param_idx]
+                    ):
                         mismatch = MismatchType.FILTER
-                        break # while: fail
+                        break  # while: fail
 
                     param_idx += 1
                 i = key_end
             else:
                 mismatch = MismatchType.PARTIAL
-                break # while: fail
-        else: # success
+                break  # while: fail
+        else:  # success
             is_exact = True
 
         if not is_exact and not mismatch:
             mismatch = MismatchType.WHOLE
         return pnode, mismatch, i, param_idx, stack
-
 
     # ------------------- [interface methods] --------------------------
     def add(self, route_pattern, data, params = None):
@@ -295,15 +305,16 @@ class RadiDict:
 
         is_wildcard = False
         if route_pattern and route_pattern[-1] == '*':
-           route_pattern = route_pattern[:-1]
-           is_wildcard = True
+            route_pattern = route_pattern[:-1]
+            is_wildcard = True
 
         node, mismatch, ptr, prm_idx, stack = self._match(route_pattern, pnode = self.root)
 
         if is_wildcard and (
-        not mismatch \
-        or mismatch == MismatchType.PARTIAL \
-        and node[KEY].startswith(route_pattern[ptr:])):
+            not mismatch
+            or mismatch == MismatchType.PARTIAL
+            and node[KEY].startswith(route_pattern[ptr:])
+        ):
             node[IDX] = None
             del node[OFFSET:]
         elif mismatch:
@@ -317,7 +328,7 @@ class RadiDict:
         for node in stack:
             if key0_to_del:
                 kidx = node[IDX].find(key0_to_del)
-                if kidx<0:
+                if kidx < 0:
                     raise RadiDictError('critical error: router seems to be corrupted')
                 node[IDX] = node[IDX].replace(key0_to_del, '')
                 del node[OFFSET + kidx]
@@ -326,7 +337,6 @@ class RadiDict:
                 key0_to_del = node[KEY][0]
             else:
                 break
-
 
     def get(self, route):
         # local constants
@@ -346,7 +356,7 @@ class RadiDict:
                 idx = pnode[IDX]
                 if not idx:
                     # there are no children
-                    break # while
+                    break  # while
 
                 kidx = None
                 if do_look_back:
@@ -356,21 +366,21 @@ class RadiDict:
                     c0 = route[i]
                     for ic, c in enumerate(idx):
                         if c == c0:
-                            kidx = ic;  break # found!
+                            kidx = ic; break  # found!
 
-                if kidx is None: # not found
+                if kidx is None:  # not found
                     # maybe token or look_back
                     if c == TOKEN:
                         token_node = pnode[-1]
                         if (filter := token_node[FILTER]):
                             param_value, j, selector = filter(route[i:])
-                            j+=i
+                            j += i
                         else:
                             j = i
                             while j < L:
                                 if route[j] == PATH_SEP:
                                     break
-                                j+=1
+                                j += 1
                             param_value = route[i:j]
 
                         if param_value is not None:
@@ -380,37 +390,38 @@ class RadiDict:
                             if (h := pnode[HOOKS]):
                                 hooks.append([i, h])
                             if selector is not None:
+                                look_back.append([route, pnode, i, L, params[:], hooks[:], False])
                                 route = str(selector) + route[i:]
                                 i = 0
                                 L = len(route)
                                 selector = None
                             continue
                         else:
-                            break # while
+                            break  # while
                     else:
                         break
 
                 # regular logic
                 if idx[-1] == TOKEN:
-                    look_back.append([route, pnode, i, L, params[:], hooks[:]])
+                    look_back.append([route, pnode, i, L, params[:], hooks[:], True])
                 key = (pnode := pnode[OFFSET + kidx])[KEY]
                 key_end = i + len(key)
-                if  key == route[i: key_end]:
+                if key == route[i: key_end]:
                     i = key_end
                     if (h := pnode[HOOKS]):
                         hooks.append([i, h])
                 else:
-                    break # while
+                    break  # while
 
-            else: # while postprocessing
-                # if there is no data
-                # this is partial match => try look_back
+            else:  # while-postprocessing
                 if pnode[DATA]:
                     return (pnode[DATA], pnode[PARAMS], params, hooks)
+                # if there is no data
+                # this is partial match => try look_back
 
             if look_back:
-                route,  pnode, i, L, params, hooks = look_back.pop()
-                do_look_back = True
+                route, pnode, i, L, params, hooks, look_type = look_back.pop()
+                do_look_back = look_type
             else:
                 return
 
@@ -419,35 +430,37 @@ class RadiDict:
         if not params:
             return route
         for p in params:
-            route = route.replace(self.param_token, f':{p}', 1)
-        return  route
+            route = route.replace(self.param_token, f':{p or "noname"}', 1)
+        return route
 
     def _routes_iter(self, pnode = None, startswith = None, yield_hooks = False):
         pnode = pnode or self.root
         prefix_stack = []
         if startswith:
             node, mismatch, ptr, _, prefix_stack = self._match(startswith, pnode = pnode)
-            if not mismatch \
-            or mismatch == MismatchType.PARTIAL \
-            and node[KEY].startswith(startswith[ptr:]):
+            if (
+                not mismatch
+                or mismatch == MismatchType.PARTIAL
+                and node[KEY].startswith(startswith[ptr:])
+            ):
                 pnode = node
                 del prefix_stack[-1]
             else:
                 return []
 
         rec = [
-            pnode, #path
+            pnode,  # path
             len(pnode[IDX] or ''),
-            0, # cur child index
+            0,  # cur child index
         ]
         path = [pnode]
         stack = [rec]
         while stack:
             pnode, L, i = stack[-1]
-            if i<L:
-                cnode = pnode[i+OFFSET]
+            if i < L:
+                cnode = pnode[i + OFFSET]
                 L = len(cnode[IDX] or '')
-                stack[-1][2] = i+1
+                stack[-1][2] = i + 1
                 path.append(cnode)
                 stack.append([
                     cnode,
@@ -459,17 +472,3 @@ class RadiDict:
                     yield prefix_stack + path
                 stack.pop()
                 path.pop()
-
-
-    def _json(self, node,  *flds):
-        ret = [node[f]  for f in flds]
-        ret.extend([self._json(c, *flds) for c in  node[OFFSET:]])
-        return ret
-
-    def json(self, node = None, simple = None):
-        node = node or self.root
-        if  simple:
-            ret = self._json(node, KEY)
-        else:
-            ret = node
-        return json.dumps(ret, indent = 3)

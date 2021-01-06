@@ -1,17 +1,18 @@
 import cgi
-import functools
-import json
+import json as json_mod
 from urllib.parse import urljoin, SplitResult as UrlSplitResult
 from urllib.parse import quote as urlquote
+import base64
 
 from .request import cache_in, _parse_qsl
 from http.cookies import SimpleCookie
 from .helpers import (
-    ts_props, touni, tob,
+    touni, tob,
     cookie_decode,
     WSGIHeaderDict, FormsDict,
     FileUpload
 )
+
 
 # fix bug cgi.FieldStorage context manager bug https://github.com/python/cpython/pull/14815
 def cgi_monkey_patch():
@@ -22,23 +23,22 @@ def cgi_monkey_patch():
 cgi_monkey_patch()
 
 
+def on_env_changed(request, key, v):
+    todelete = ()
+    if key == 'wsgi.input':
+        todelete = ('forms', 'files', 'params', 'post', 'json')
+    elif key == 'QUERY_STRING':
+        todelete = ('query', 'params')
+    elif key.startswith('HTTP_'):
+        todelete = ('headers', 'cookies')
+    for key in todelete:
+        request.environ.pop('bottle.request.' + key, None)
 
-class Mixin:
 
-    @staticmethod
-    def on_env_changed(request, key, v):
-        todelete = ()
-        if key == 'wsgi.input':
-            todelete = ('forms', 'files', 'params', 'post', 'json')
-        elif key == 'QUERY_STRING':
-            todelete = ('query', 'params')
-        elif key.startswith('HTTP_'):
-            todelete = ('headers', 'cookies')
-        for key in todelete:
-            request.environ.pop('bottle.request.'+key, None)
+def mixin():
 
-    def __init__(self, *a, **kw):
-        self.on('env_changed',self.on_env_changed)
+    def __new__(self, *a, **kw):
+        self.on('env_changed', on_env_changed)
 
     @cache_in('environ[ pbottle.app ]', read_only=True)
     def app(self):
@@ -59,7 +59,7 @@ class Mixin:
     def path(self):
         ''' The value of ``PATH_INFO`` with exactly one prefixed slash (to fix
             broken clients and avoid the "empty path" edge case). '''
-        return '/' + self.environ.get('PATH_INFO','').lstrip('/')
+        return '/' + self.environ.get('PATH_INFO', '').lstrip('/')
 
     @property
     def method(self):
@@ -76,7 +76,7 @@ class Mixin:
     def cookies(self):
         """ Cookies parsed into a :class:`FormsDict`. Signed cookies are NOT
             decoded. Use :meth:`get_cookie` if you expect signed cookies. """
-        cookies = SimpleCookie(self.environ.get('HTTP_COOKIE','')).values()
+        cookies = SimpleCookie(self.environ.get('HTTP_COOKIE', '')).values()
         return FormsDict((c.key, c.value) for c in cookies)
 
     def get_cookie(self, key, default=None, secret=None):
@@ -86,7 +86,7 @@ class Mixin:
             cookie or wrong signature), return a default value. """
         value = self.cookies.get(key)
         if secret and value:
-            dec = cookie_decode(value, secret) # (key, value) tuple or None
+            dec = cookie_decode(value, secret)  # (key, value) tuple or None
             return dec[1] if dec and dec[0] == key else default
         return value or default
 
@@ -141,7 +141,6 @@ class Mixin:
         ctype = self.environ.get('CONTENT_TYPE', '').lower().split(';')
         return [t.strip() for t in ctype]
 
-
     @cache_in('environ[ bottle.request.json ]', read_only=True)
     def json(self):
         ''' If the ``Content-Type`` header is ``application/json``, this
@@ -152,12 +151,12 @@ class Mixin:
             b = self._get_body_string()
             if not b:
                 return None
-            return json.loads(b)
+            return json_mod.loads(b)
         return None
 
     @property
     def body(self):
-        (ret:=self._body).seek(0)
+        (ret := self._body).seek(0)
         return ret
 
     @property
@@ -187,20 +186,22 @@ class Mixin:
 
         env = self.environ
 
-        safe_env = {'QUERY_STRING':''} # Build a safe environment for cgi
+        safe_env = {'QUERY_STRING': ''}  # Build a safe environment for cgi
         for key in ('REQUEST_METHOD', 'CONTENT_TYPE', 'CONTENT_LENGTH'):
             if key in env: safe_env[key] = env[key]
         args = dict(
             fp= self.body, environ= safe_env, keep_blank_values= True,
             encoding = 'utf8'
         )
-        #self['_cgi.FieldStorage'] = data #http://bugs.python.org/issue18394#msg207958
+        # self['_cgi.FieldStorage'] = data #http://bugs.python.org/issue18394#msg207958
         with cgi.FieldStorage(**args) as data:
             data = data.list or []
             for item in data:
                 if item.filename:
-                    post[item.name] = FileUpload(item.file, item.name,
-                                                item.filename, item.headers)
+                    post[item.name] = FileUpload(
+                        item.file, item.name,
+                        item.filename, item.headers
+                    )
                 else:
                     post[item.name] = item.value
         return post
@@ -253,7 +254,6 @@ class Mixin:
         script_name = env_get('SCRIPT_NAME', env_get('HTTP_X_SCRIPT_NAME', '')).strip('/')
         return '/' + script_name + '/' if script_name else '/'
 
-
     @cache_in('environ[ bottle.request.content_length ]', read_only=True)
     def content_length(self):
         ''' The request body length as an integer. The client is responsible to
@@ -271,7 +271,7 @@ class Mixin:
         ''' True if the request was triggered by a XMLHttpRequest. This only
             works with JavaScript libraries that support the `X-Requested-With`
             header (most of the popular libraries do). '''
-        requested_with = self.environ.get('HTTP_X_REQUESTED_WITH','')
+        requested_with = self.environ.get('HTTP_X_REQUESTED_WITH', '')
         return requested_with.lower() == 'xmlhttprequest'
 
     @property
@@ -287,7 +287,18 @@ class Mixin:
             front web-server or a middleware), the password field is None, but
             the user field is looked up from the ``REMOTE_USER`` environ
             variable. On any errors, None is returned. """
-        basic = parse_auth(self.environ.get('HTTP_AUTHORIZATION',''))
+
+        def parse_auth(header):
+            """ Parse rfc2617 HTTP authentication header string (basic) and return (user,pass) tuple or None"""
+            try:
+                method, data = header.split(None, 1)
+                if method.lower() == 'basic':
+                    user, pwd = touni(base64.b64decode(tob(data))).split(':', 1)
+                    return user, pwd
+            except (KeyError, ValueError):
+                return None
+
+        basic = parse_auth(self.environ.get('HTTP_AUTHORIZATION', ''))
         if basic: return basic
         ruser = self.environ.get('REMOTE_USER')
         if ruser: return (ruser, None)
@@ -310,3 +321,5 @@ class Mixin:
             by malicious clients. """
         route = self.remote_route
         return route[0] if route else None
+
+    return dict(locals())

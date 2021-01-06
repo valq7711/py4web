@@ -1,10 +1,16 @@
 from collections.abc import MutableMapping as DictMixin
+import os
+import re
 import types
 import threading
 import base64
 import pickle
 import hmac
 import hashlib
+import email.utils
+import time
+from unicodedata import normalize
+
 
 class PBottleException(Exception):
     """ A base class for exceptions used by bottle. """
@@ -15,20 +21,29 @@ class PBottleException(Exception):
 # Common Utilities #############################################################
 ###############################################################################
 
+def parse_date(ims):
+    """ Parse rfc1123, rfc850 and asctime timestamps and return UTC epoch. """
+    try:
+        ts = email.utils.parsedate_tz(ims)
+        return time.mktime(ts[:8] + (0,)) - (ts[9] or 0) - time.timezone
+    except (TypeError, ValueError, IndexError, OverflowError):
+        return None
+
 
 # ---------------- [ Some helpers for string/byte handling ] ---------
 def tob(s, enc='utf8'):
     return s.encode(enc) if isinstance(s, str) else bytes(s)
+
 def touni(s, enc='utf8', err='strict'):
     return s.decode(enc, err) if isinstance(s, bytes) else str(s)
 
-#------------------[ cookie ] -------------------
+
+# ------------------[ cookie ] -------------------
 def cookie_encode(data, key):
     ''' Encode and sign a pickle-able object. Return a (byte) string '''
     msg = base64.b64encode(pickle.dumps(data, -1))
     sig = base64.b64encode(hmac.new(tob(key), msg, digestmod=hashlib.md5).digest())
     return tob('!') + sig + tob('?') + msg
-
 
 def cookie_decode(data, key):
     ''' Verify and decode an encoded string. Return an object or None.'''
@@ -39,7 +54,7 @@ def cookie_decode(data, key):
     def _lscmp(a, b):
         ''' Compares two strings in a cryptographically safe way:
             Runtime is not affected by length of common prefix. '''
-        return not sum(0 if x==y else 1 for x, y in zip(a, b)) and len(a) == len(b)
+        return not sum(0 if x == y else 1 for x, y in zip(a, b)) and len(a) == len(b)
 
     data = tob(data)
     if cookie_is_encoded(data):
@@ -48,19 +63,22 @@ def cookie_decode(data, key):
             return pickle.loads(base64.b64decode(msg))
     return None
 
-#------------------[ html escape `&<>'"`] -------------------
+
+# ------------------[ html escape `&<>'"`] -------------------
 def html_escape(string):
     ''' Escape HTML special characters ``&<>`` and quotes ``'"``. '''
-    return string.replace('&','&amp;').replace('<','&lt;').replace('>','&gt;')\
-                 .replace('"','&quot;').replace("'",'&#039;')
+    return string.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')\
+                 .replace('"', '&quot;').replace("'", '&#039;')
 
-#------------------[ thread safe props] -------------------
+
+# ------------------[ thread safe props] -------------------
 def ts_props(*props, as_slots = False):
     def wrapper(cls):
         local_store = threading.local()
         for k in props:
             setattr(local_store, k, None)
-            setattr(cls, k,
+            setattr(
+                cls, k,
                 property(
                     (lambda n = k: lambda s: getattr(local_store, n))(),
                     (lambda n = k: lambda s, v: setattr(local_store, n, v))(),
@@ -69,24 +87,25 @@ def ts_props(*props, as_slots = False):
             )
         if as_slots:
             if not getattr(cls, '__slots__', None):
-                cls.__slots__=[]
+                cls.__slots__ = []
             cls.__slots__.extend(props)
         return cls
     return wrapper
 
-#------------------[ exposes prop callable attrubutes at instance level] -------------------
+
+# ------------------[ exposes prop callable attrubutes at instance level] -------------------
 def proxy(prop, attrs, cls = None):
     def injector(cls):
         for attr in attrs:
             setattr(
                 cls, attr,
-                (lambda _attr = attr:  lambda s, *a, **kw: getattr(getattr(s, prop), _attr)(*a, **kw))()
+                (lambda _attr = attr: lambda s, *a, **kw: getattr(getattr(s, prop), _attr)(*a, **kw))()
             )
         return cls
     return injector if not cls else injector(cls)
 
 
-#------------------[ helper classes] -------------------
+# ------------------[ helper classes] -------------------
 
 class cached_property(object):
     ''' A property that is only computed once per instance and then replaces
@@ -101,6 +120,7 @@ class cached_property(object):
         if obj is None: return self
         value = obj.__dict__[self.func.__name__] = self.func(obj)
         return value
+
 
 class NameSpace(types.SimpleNamespace):
     ''' fast Name-Space-Dict
@@ -135,7 +155,7 @@ class FormsDict(dict):
     recode_unicode = True
 
     def _fix(self, s, encoding=None):
-        if isinstance(s, str) and self.recode_unicode: # Python 3 WSGI
+        if isinstance(s, str) and self.recode_unicode:  # Python 3 WSGI
             return s.encode('latin1').decode(encoding or self.input_encoding)
         else:
             return s
@@ -164,8 +184,9 @@ class FormsDict(dict):
             return super().__getattr__(name)
         return self.getunicode(name, default=default)
 
-#------------------[ headers parsing] -------------------
-def _hval(value:str):
+
+# ------------------[ headers parsing] -------------------
+def _hval(value):
     if not (value is None or isinstance(value, (str, int, float, bool))):
         raise TypeError(f"Header value must be type of (str, int, float, bool, None), got: {type(value)}")
     value = str(value)
@@ -173,11 +194,12 @@ def _hval(value:str):
         raise ValueError("Header value must not contain control characters: %r" % value)
     return value
 
+
 @proxy('dict', 'keys pop popitem values items get'.split())
 class HeaderDict(DictMixin):
     dict = property(
         (lambda s: s._ts.dict),
-        (lambda s, v: setattr(s._ts,'dict', v)),
+        (lambda s, v: setattr(s._ts, 'dict', v)),
     )
 
     def __init__(self, *a, **kw):
@@ -188,7 +210,7 @@ class HeaderDict(DictMixin):
     def __contains__(self, key): return key in self._ts.dict
     def __delitem__(self, key): del self._ts.dict[key]
     def __getitem__(self, key): return self._ts.dict[key]
-    def __setitem__(self, key, value): self._ts.dict[key]= _hval(value)
+    def __setitem__(self, key, value): self._ts.dict[key] = _hval(value)
     def copy(self):
         ret = self.__class__()
         ret.dict = {k: (v[:] if isinstance(v, list) else v) for k, v in self.items()}
@@ -199,7 +221,7 @@ class HeaderDict(DictMixin):
     def append(self, key, value):
         d = self._ts.dict
         value = _hval(value)
-        if (v:=d.get(key)) is None:
+        if (v := d.get(key)) is None:
             d[key] = value
         elif isinstance(v, list):
             v.append(value)
@@ -234,13 +256,12 @@ class WSGIHeaderDict(DictMixin):
     #: List of keys that do not have a ``HTTP_`` prefix.
     cgikeys = ('CONTENT_TYPE', 'CONTENT_LENGTH')
 
-
     def __init__(self, environ):
         self.environ = environ
 
     def _ekey(self, key):
         ''' Translate header field name to CGI/WSGI environ key. '''
-        key = key.replace('-','_').upper()
+        key = key.replace('-', '_').upper()
         if key in self.cgikeys:
             return key
         return 'HTTP_' + key
@@ -269,6 +290,7 @@ class WSGIHeaderDict(DictMixin):
     def __len__(self): return len(self.keys())
     def __contains__(self, key): return self._ekey(key) in self.environ
 
+
 class HeaderProperty:
     def __init__(self, name, reader=None, writer=None, default=''):
         self.name, self.default = name, default
@@ -285,6 +307,7 @@ class HeaderProperty:
 
     def __delete__(self, obj):
         del obj.headers[self.name]
+
 
 class FileUpload:
 
@@ -317,7 +340,7 @@ class FileUpload:
             or dashes are removed. The filename is limited to 255 characters.
         '''
         fname = self.raw_filename
-        if not isinstance(fname, unicode):
+        if not isinstance(fname, str):
             fname = fname.decode('utf8', 'ignore')
         fname = normalize('NFKD', fname).encode('ASCII', 'ignore').decode('ASCII')
         fname = os.path.basename(fname.replace('\\', os.path.sep))
@@ -342,7 +365,7 @@ class FileUpload:
             :param overwrite: If True, replace existing files. (default: False)
             :param chunk_size: Bytes to read at a time. (default: 64kb)
         '''
-        if isinstance(destination, str): # Except file-likes here
+        if isinstance(destination, str):  # Except file-likes here
             if os.path.isdir(destination):
                 destination = os.path.join(destination, self.filename)
             if not overwrite and os.path.exists(destination):
@@ -355,7 +378,7 @@ class FileUpload:
 
 class WSGIFileWrapper(object):
 
-    def __init__(self, fp, buffer_size=1024*64):
+    def __init__(self, fp, buffer_size=1024 * 64):
         self.fp, self.buffer_size = fp, buffer_size
         for attr in ('fileno', 'close', 'read', 'readlines', 'tell', 'seek'):
             if (a := getattr(fp, attr, None)) is not None:
@@ -375,11 +398,11 @@ def parse_range_header(header, maxlen=0):
     for start, end in ranges:
         try:
             if not start:  # bytes=-100    -> last 100 bytes
-                start, end = max(0, maxlen-int(end)), maxlen
+                start, end = max(0, maxlen - int(end)), maxlen
             elif not end:  # bytes=100-    -> all but the first 99 bytes
                 start, end = int(start), maxlen
             else:          # bytes=100-200 -> bytes 100-200 (inclusive)
-                start, end = int(start), min(int(end)+1, maxlen)
+                start, end = int(start), min(int(end) + 1, maxlen)
             if 0 <= start < end <= maxlen:
                 yield start, end
         except ValueError:

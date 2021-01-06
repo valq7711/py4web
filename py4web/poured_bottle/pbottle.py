@@ -2,27 +2,35 @@ import os
 import sys
 import json
 import functools
-from traceback import format_exc, print_exc
-import mimetypes, time
+from traceback import format_exc
+import mimetypes
+import time
+import itertools
+from urllib.parse import urljoin
 
-
-from .helpers import cached_property, WSGIFileWrapper, parse_range_header, ts_props
+from .helpers import (
+    cached_property, WSGIFileWrapper, parse_range_header,
+    parse_date, html_escape, tob
+)
 from .radirouter import RadiRouter
 from .request import Request, BaseRequest
 from . import request_mixin
 from .response import Response, HTTPResponse, HTTPError
 from . import server_adapters
 
-
 __version__ = "0.0.1"
 
 HTTP_METHODS = 'DELETE GET HEAD OPTIONS PATCH POST PUT'.split(' ')
 
-Request.mixin(request_mixin.Mixin)
+Request.mixin(request_mixin.mixin())
+
 
 class Config:
     __slots__ = 'domain_map'
-config  = Config()
+
+
+config = Config()
+
 
 class _closeiter:
     ''' This only exists to be able to attach a .close method to iterators that
@@ -41,7 +49,7 @@ class _closeiter:
 
 def run(app=None, server='wsgiref', host='127.0.0.1', port=8080,
         quiet=False, **kargs):
-    _stdout, _stderr = sys.stdout.write, sys.stderr.write
+    _stderr = sys.stderr.write
     try:
         app = app or default_app()
         if not callable(app):
@@ -74,6 +82,8 @@ def with_method_shortcuts(methods):
 ###############################################################################
 # Application Object ###########################################################
 ###############################################################################
+
+
 @with_method_shortcuts(HTTP_METHODS)
 class PBottle:
     """ Each Bottle object represents a single, distinct web application and
@@ -96,17 +106,16 @@ class PBottle:
         verb = environ['REQUEST_METHOD'].upper()
         path = environ['PATH_INFO'] or '/'
 
-        target = None
         if verb == 'HEAD':
             methods = [verb, 'GET', 'ANY']
         else:
             methods = [verb, 'ANY']
-        tmp, error =  self.router.get(path, methods)
+        tmp, error = self.router.get(path, methods)
         if error:
             raise HTTPError(*error)
         route, names, values, hooks = tmp
         param_values = []
-        params = [{n:v for n, v in zip(names, values) if n and (param_values.append(v) or True)}]
+        params = [{n: v for n, v in zip(names, values) if n and (param_values.append(v) or True)}]
         return route, params, param_values, hooks
 
     def add_route(self, rule, method, handler, name = None):
@@ -152,7 +161,7 @@ class PBottle:
         [hook(*args, **kwargs) for hook in self._hooks[name][:]]
 
     def on(self, name, func = None):
-        if not func: # used as decorator
+        if not func:  # used as decorator
             def decorator(func):
                 self.add_hook(name, func)
                 return func
@@ -178,7 +187,7 @@ class PBottle:
                 pass
 
     def on_route(self, route, func = None):
-        if not func: # used as decorator
+        if not func:  # used as decorator
             def decorator(func):
                 self.add_route_hook(route, func)
                 return func
@@ -211,13 +220,13 @@ class PBottle:
             environ['PATH_INFO'] = path.encode('latin1').decode('utf8')
         except UnicodeError:
             return HTTPError(400, 'Invalid path string. Expected UTF-8')
-        try: # init thread
+        try:  # init thread
             environ['pbottle.app'] = self
             request.__init__(environ)
             response.__init__()
-            try: # routing
+            try:  # routing
                 self.emit('before_request')
-                route, args, values, route_hooks  = self.to_route(environ)
+                route, args, values, route_hooks = self.to_route(environ)
                 environ['pbottle.route'] = route
                 environ['route.url_args'] = args
                 environ['route.hooks'] = route_hooks
@@ -229,7 +238,7 @@ class PBottle:
         except (KeyboardInterrupt, SystemExit, MemoryError):
             raise
         except Exception as err500:
-            #raise
+            # raise
             stacktrace = format_exc()
             environ['wsgi.errors'].write(stacktrace)
             return HTTPError(500, "Internal Server Error", err500, stacktrace)
@@ -296,7 +305,7 @@ class PBottle:
             except (KeyboardInterrupt, SystemExit, MemoryError):
                 raise
             except Exception as err500:
-                #if not self.catchall: raise
+                # if not self.catchall: raise
                 first = HTTPError(500, 'Unhandled exception', err500, format_exc())
 
             # These are the inner types allowed in iterator or generator objects.
@@ -306,7 +315,7 @@ class PBottle:
                 new_iter = itertools.chain([first], iout)
             elif isinstance(first, str):
                 encoder = lambda x: x.encode(response.charset)
-                new_iter = imap(encoder, itertools.chain([first], iout))
+                new_iter = map(encoder, itertools.chain([first], iout))
             else:
                 out = HTTPError(500, f'Unsupported response type: {type(first)}')
                 continue                                         # -----------------^
@@ -317,32 +326,33 @@ class PBottle:
     def wsgi(self, environ, start_response):
         """ The bottle WSGI-interface. """
 
+        env = self.request.environ
         if (domain_map := getattr(config, 'domain_map', None)):
             if (app_name := domain_map(env.get('HTTP_X_FORWARDED_HOST') or env.get('HTTP_HOST'))):
                 environ["HTTP_X_PY4WEB_APPNAME"] = '/' + app_name
                 environ["PATH_INFO"] = '/' + app_name + environ["PATH_INFO"]
 
         response = self.response
-        request = self.request
         try:
             out = self._cast(self._handle(environ))
             # rfc2616 section 4.3
-            if response._status_code in (100, 101, 204, 304)\
+            if response._status_code in (100, 101, 204, 304) \
             or environ['REQUEST_METHOD'] == 'HEAD':
-                if hasattr(out, 'close'): out.close()
+                if hasattr(out, 'close'):
+                    out.close()
                 out = []
             start_response(response._status_line, response.headerlist)
             return out
         except (KeyboardInterrupt, SystemExit, MemoryError):
             raise
-        except Exception:
-            #if not self.catchall: raise
+        except Exception as _e:
+            # if not self.catchall: raise
             err = '<h1>Critical error while processing request: %s</h1>' \
                   % html_escape(environ.get('PATH_INFO', '/'))
-            if DEBUG:
+            if True:  # DEBUG: FIX ME
                 err += '<h2>Error:</h2>\n<pre>\n%s\n</pre>\n' \
                        '<h2>Traceback:</h2>\n<pre>\n%s\n</pre>\n' \
-                       % (html_escape(repr(_e())), html_escape(format_exc()))
+                       % (html_escape(repr(_e)), html_escape(format_exc()))
             environ['wsgi.errors'].write(err)
             headers = [('Content-Type', 'text/html; charset=UTF-8')]
             start_response('500 INTERNAL SERVER ERROR', headers, sys.exc_info())
@@ -353,11 +363,10 @@ class PBottle:
         return self.wsgi(environ, start_response)
 
 
-
-
 ###############################################################################
 # Application Helper ###########################################################
 ###############################################################################
+
 
 def abort(code=500, text='Unknown Error.'):
     """ Aborts execution and causes a HTTP error. """
@@ -375,6 +384,7 @@ def redirect(location, code=None):
     res.body = ""
     res.set_header('Location', urljoin(request.url, url))
     raise res
+
 
 def static_file(filename, root, mimetype='auto', download=False, charset='UTF-8'):
     """ Open a file in a safe way and return :exc:`HTTPResponse` with status
@@ -396,7 +406,7 @@ def static_file(filename, root, mimetype='auto', download=False, charset='UTF-8'
             mime-type. (default: UTF-8)
     """
 
-    def _file_iter_range(fp, offset, bytes, maxread=1024*1024):
+    def _file_iter_range(fp, offset, bytes, maxread = 1024 * 1024):
         ''' Yield chunks from a range in a file. No chunk is bigger than maxread.'''
         fp.seek(offset)
         while bytes > 0 and (part := fp.read(min(bytes, maxread))):
@@ -424,7 +434,7 @@ def static_file(filename, root, mimetype='auto', download=False, charset='UTF-8'
         headers['Content-Type'] = mimetype
 
     if download:
-        download = os.path.basename(filename if download == True else download)
+        download = os.path.basename(filename if download is True else download)
         headers['Content-Disposition'] = 'attachment; filename="%s"' % download
 
     stats = os.stat(filename)
@@ -449,12 +459,11 @@ def static_file(filename, root, mimetype='auto', download=False, charset='UTF-8'
             return HTTPError(416, "Requested Range Not Satisfiable")
         offset, end = ranges[0]
         headers["Content-Range"] = f"bytes {offset}-{end-1}/{clen}"
-        headers["Content-Length"] = str(end-offset)
+        headers["Content-Length"] = str(end - offset)
         if body:
-            body = _file_iter_range(body, offset, end-offset)
+            body = _file_iter_range(body, offset, end - offset)
         return HTTPResponse(body, status=206, **headers)
     return HTTPResponse(body, **headers)
-
 
 
 app = None
@@ -463,6 +472,7 @@ on_route = None
 request = None
 response = None
 error = None
+
 
 def app_make():
     global app, route, on_route, request, response, error
@@ -474,11 +484,9 @@ def app_make():
     error = app.error
     return app
 
+
 def default_app():
     global app
     if not app:
         app_make()
     return app
-
-
-

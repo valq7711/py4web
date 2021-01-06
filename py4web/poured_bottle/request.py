@@ -1,6 +1,5 @@
 import re
 from tempfile import TemporaryFile
-import json
 from io import BytesIO
 from functools import partial
 from .helpers import (
@@ -8,6 +7,7 @@ from .helpers import (
 )
 from .response import HTTPError
 from urllib.parse import unquote as urlunquote; urlunquote = partial(urlunquote, encoding='latin1')
+
 
 def _get_body_string(read, content_length, MEMFILE_MAX, httpErr):
     ''' read body until content-length or MEMFILE_MAX into a string. Raise
@@ -21,6 +21,7 @@ def _get_body_string(read, content_length, MEMFILE_MAX, httpErr):
         raise httpErr
     return data
 
+
 def _iter_body(read, bufsize, content_length):
     maxread = max(0, content_length)
     while maxread:
@@ -28,6 +29,7 @@ def _iter_body(read, bufsize, content_length):
         if not part: break
         yield part
         maxread -= len(part)
+
 
 def _iter_chunked(read, bufsize, httpErr):
     rn, sem, bs = tob('\r\n'), tob(';'), tob('')
@@ -55,10 +57,11 @@ def _iter_chunked(read, bufsize, httpErr):
         if read(2) != rn:
             raise httpErr
 
+
 def _body_read(read, MEMFILE_MAX, *, content_length = None, chunked = None, httpErr):
     body_iter = \
         partial(_iter_chunked, httpErr = httpErr) if chunked \
-        else partial( _iter_body, content_length = content_length)
+        else partial(_iter_body, content_length = content_length)
     body, body_size, is_temp_file = BytesIO(), 0, False
     for part in body_iter(read, MEMFILE_MAX):
         body.write(part)
@@ -69,6 +72,7 @@ def _body_read(read, MEMFILE_MAX, *, content_length = None, chunked = None, http
             del tmp
             is_temp_file = True
     return body
+
 
 def _parse_qsl(qs, *, append:callable = None, setitem:callable = None):
     container = None
@@ -92,39 +96,41 @@ def _parse_qsl(qs, *, append:callable = None, setitem:callable = None):
 
     L = len(qs)
     i = 0
-    while i<L:
+    while i < L:
         key = None
-        idx = 0;  c = None
+        idx = 0; c = None
         for idx, c in enumerate(qs[i:]):
             if c == '=' or c == '&':
                 break
         else:
-            idx+=1
-        j = i+idx
+            idx += 1
+        j = i + idx
         key = qs[i:j]
-        i = j+1 # skip '=' or '&'
+        i = j+1  # skip '=' or '&'
         if not key: continue
         key = urlunquote(key.replace('+', ' '))
         if c == '&':
             value = ''
         else:
-            idx=0; c = None
+            idx = 0; c = None
             for idx, c in enumerate(qs[i:]):
                 if c == '&':
                     break
             else:
-                idx+=1
-            j = i+idx
+                idx += 1
+            j = i + idx
             value = urlunquote(qs[i:j].replace('+', ' '))
-            i = j+1 # skip '&'
+            i = j + 1  # skip '&'
         add(key, value)
     return container
+
 
 def cache_in(attr, key=None, read_only=False):
     # attr = 'environ[ PATH_INFO ]'
     re_attr_key = re.compile('^(.+?)\[\s*([^\[\]]+?)\s*\]$')
     if not key and (attr_key := re_attr_key.match(attr)):
         attr, key = attr_key.groups()
+
     def wrapper(getter):
         def maybe_readonly():
             if read_only: raise AttributeError("Read-Only property.")
@@ -140,6 +146,7 @@ def cache_in(attr, key=None, read_only=False):
             def fset(self, value):
                 maybe_readonly()
                 setattr(self, attr, value)
+
             def fdel(self):
                 maybe_readonly()
                 delattr(self, attr)
@@ -162,13 +169,21 @@ def cache_in(attr, key=None, read_only=False):
     return wrapper
 
 
-
-#------------------[ BaseRequest ] -------------------
+# ------------------[ BaseRequest ] -------------------
 class BaseRequest:
     __slots__ = ('environ', '__subscribers__')
 
     #: Maximum size of memory buffer for :attr:`body` in bytes.
     MEMFILE_MAX = 102400
+
+    def __new__(cls, *a, **kw):
+        self = super().__new__(cls)
+        self.__subscribers__ = {}
+        self.on(
+            'env_changed',
+            lambda request, k, v: request.environ.pop('bottle.request.body', None) if k == 'wsgi.input' else None
+        )
+        return self
 
     def __init__(self, environ = None):
         """ Wrap a WSGI environ dictionary. """
@@ -176,10 +191,6 @@ class BaseRequest:
         #: All other attributes actually are read-only properties.
         self.environ = {} if environ is None else environ
         self.environ['bottle.request'] = self
-        self.__subscribers__ ={}
-        self.on('env_changed',
-            lambda request, k, v: request.environ.pop('bottle.request.body', None) if k == 'wsgi.input' else None
-        )
 
     @cache_in('environ[ bottle.request.body ]', read_only=True)
     def _body(self):
@@ -204,16 +215,16 @@ class BaseRequest:
         )
 
     def on(self, e, cb):
-        if not e in self.__subscribers__:
+        if e not in self.__subscribers__:
             self.__subscribers__[e] = []
         self.__subscribers__[e].append(cb)
-        return lambda:  self.__subscribers__[e].remove(cb)
+        return lambda: self.__subscribers__[e].remove(cb)
 
     def off(self, e, cb):
         self.__subscribers__[e].remove(cb)
 
     def emit(self, e, *a, **kw):
-        if not e in self.__subscribers__:
+        if e not in self.__subscribers__:
             return
         [cb(self, *a, **kw) for cb in self.__subscribers__[e]]
 
@@ -243,8 +254,9 @@ class BaseRequest:
 
     def __getattr__(self, name):
         ''' Search in self.environ for additional user defined attributes. '''
+
         try:
-            var = self.environ['bottle.request.ext.%s'%name]
+            var = self.environ['bottle.request.ext.%s' % name]
             return var.__get__(self) if hasattr(var, '__get__') else var
         except KeyError:
             raise AttributeError('Attribute %r not defined.' % name)
@@ -252,29 +264,32 @@ class BaseRequest:
     def __setattr__(self, name, value):
         if name in ('environ', '__subscribers__'):
             return object.__setattr__(self, name, value)
-        self.environ['bottle.request.ext.%s'%name] = value
+        self.environ['bottle.request.ext.%s' % name] = value
+        return value
 
-
-class __skip_attrs__:
-    pass
 
 @ts_props('environ')
 class Request(BaseRequest):
-    __mixins_init__ = []
+    __mixins__special__ = {
+        '__new__' : [],
+        '__init__': [],
+    }
+
+    def __new__(cls, *a, **kw):
+        self = super().__new__(cls, *a, **kw)
+        [new(self, *a, **kw) for new in cls.__mixins__special__['__new__']]
+        return self
 
     def __init__(self, *a, **kw):
         super().__init__(*a, **kw)
-        [init(self, *a, **kw) for init in self.__mixins_init__]
+        [init(self, *a, **kw) for init in self.__mixins__special__['__init__']]
 
     @classmethod
-    def mixin(cls, mixin):
-        mixins = [mixin] if not isinstance(mixin, (list, tuple)) else mixin
-        skip_attrs = list(__skip_attrs__.__dict__.keys()) + ['__init__']
+    def mixin(cls, *mixins):
+        special = cls.__mixins__special__
         for mixin in mixins:
-            has__init__ = False
-            [setattr(cls, k, v) for k, v in mixin.__dict__.items() \
-                if k not in skip_attrs or (has__init__ := k == '__init__') and False
-            ]
-            if has__init__:
-                cls.__mixins_init__.append(mixin.__init__)
-
+            for k, v in mixin.items():
+                if k in special:
+                    special[k].append(v)
+                else:
+                    setattr(cls, k, v)

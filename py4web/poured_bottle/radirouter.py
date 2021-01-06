@@ -1,8 +1,6 @@
-from .radidict import RadiDict, KEY, PARAMS, DATA, HOOKS, MismatchType
-from .helpers import PBottleException, NameSpace
-import timeit
+from .radidict import RadiDict, DATA, HOOKS
+from .helpers import PBottleException
 import re
-
 
 
 ###############################################################################
@@ -17,11 +15,14 @@ class RouteError(PBottleException):
         super().__init__(*args)
         self.extra = kw
 
+
 class RouteSyntaxError(RouteError):
     """ The route parser found something not supported by this router. """
 
+
 class RouteBuildError(RouteError):
     """ The route could not be built. """
+
 
 class RouteMethodError(RouteError):
     """ Method not allowed """
@@ -30,7 +31,7 @@ class RouteMethodError(RouteError):
 class RouteFilterExhaust:
     def __init__(self, value, move_len, selector = None):
         self.value = value
-        self.move_len  = move_len
+        self.move_len = move_len
         self.selector = selector
 
     def get(self):
@@ -49,10 +50,11 @@ def rex(conf):
         return RouteFilterExhaust(v, re_obj.end(), selector)
     return conf, f_in, None
 
+
 class FilterFactory:
     filters = {
         're':    lambda conf: (conf, None, None),
-        'rex':  rex,
+        'rex':   rex,
         'int':   lambda conf: (r'-?\d+', int, lambda x: str(int(x))),
         'float': lambda conf: (r'-?[\d.]+', float, lambda x: str(float(x))),
         'path':  lambda conf: (f'.+?(?={re.escape(conf)})' if conf else '.+$', None, None)
@@ -72,7 +74,7 @@ class FilterFactory:
         mask = re.compile(mask)
         if f_in:
             if (code := getattr(f_in, '__code__', None)) \
-            and code.co_argcount != 1: # 0 means f_in(*args)
+            and code.co_argcount != 1:  # 0 means f_in(*args)
                 def handler(param):
                     selector = None
                     if not (tmp := mask.match(param)):
@@ -95,7 +97,6 @@ class FilterFactory:
                 return tmp.group(), tmp.end(), None
         cls._filter_cache[fkey] = handler
         return handler
-
 
 
 class Route:
@@ -121,7 +122,7 @@ class Route:
         self.filters = filters
 
     def params_signature(self):
-        return {name:[False, filter] for name, filter in zip(self.params, self.filters)}
+        return {name: [False, filter] for name, filter in zip(self.params, self.filters)}
 
     def __call__(self, *a, **ka):
         return self.callback(*a, **ka)
@@ -155,7 +156,7 @@ class Route:
         i = 0
         L = len(route)
         dopen, dclose = cls.param_delimiters
-        peek = lambda i: route[i] if i<L else None
+        peek = lambda i: route[i] if i < L else None
         while i < L:
             part = None
             param = None
@@ -164,69 +165,70 @@ class Route:
             filter_selector = None
             # param logic
             if peek(i) == dopen:
-                i+=1 # eat `dopen`
-                param = eat(f'[^:{dclose}]*') # eat until `:` or `dclose`
+                i += 1  # eat `dopen`
+                param = eat(f'[^:{dclose}]*')  # eat until `:` or `dclose`
                 if peek(i) == ':':
-                    i+=1 # eat `:`
-                    filter = eat(f'[^:{dclose}]+') # must exists
+                    i += 1  # eat `:`
+                    filter = eat(f'[^:{dclose}]+')  # must exists
                     if peek(i) == ':':
-                        i+=1 # eat `:`
+                        i += 1  # eat `:`
                         # must exists, eat until `dclose/` or `dclose$`
                         filter_args = eat(f'.+?(?=({dclose}$)|({dclose}/))')
-                i+=1 # eat `dclose`
+                i += 1  # eat `dclose`
             # alternative syntax like '/:param:filter(args)/' or '/:filter()/'
             elif peek(i) == ':':
-                i+=1 # eat `:`
-                param = eat('[^:.(/]*') # eat until `:` or `/`
+                i += 1  # eat `:`
+                param = eat('[^:.(/]*')  # eat until `:` or `/`
                 if i < L:
                     if peek(i) in ':.':
-                        i+=1 # eat `:`
-                        filter = eat('[^(]+') # must exists
+                        i += 1  # eat `:`
+                        filter = eat('[^(]+')  # must exists
                     elif peek(i) == '(':
                         filter = param
                         param = None
                     if peek(i) == '(':
-                        i+=1 # eat `(`
+                        i += 1  # eat `(`
                         # eat until `)[.+?]/` or `)/` or ')$' or `)[.+?]$`
                         filter_args = eat('.*?(?=(\)(/|$))|(\)\[\w+\](/|$)))')
                         if filter_args is None:
                             raise RouteSyntaxError(f'bad filter args syntax: ...{route[i:]}\n\tin {route}')
-                        i+=1 # eat `)`
-                        if peek(i) == '[': # selector
-                            filter_selector = eat(f'\[(.+?)\]', 1)
+                        i += 1  # eat `)`
+                        if peek(i) == '[':  # selector
+                            filter_selector = eat('\[(.+?)\]', 1)
                             if not filter_selector:
                                 raise RouteSyntaxError('filter selector value was expected')
                     elif filter:
                         raise RouteSyntaxError('filter must end with `()`')
             # static logic
             else:
-                #part = eat(f'[^/:{dopen}]+')
+                # part = eat(f'[^/:{dopen}]+')
                 part = eat(f'[^:{dopen}]+')
             # path needs special processing
             if filter == 'path':
                 tail = route[i:]
                 token_pos = tmp.end() if (tmp := re.match(f'[^:{dopen}]+', tail)) else len(tail)
                 filter_args = tail[: token_pos]
-            #if peek(i) == '/':
+            # if peek(i) == '/':
             #    i+=1
-            yield  part, param, filter, filter_args, filter_selector
+            yield part, param, filter, filter_args, filter_selector
 
     @classmethod
     def parse_route(cls, route):
         # route_pattern
-        ret = ['/'] if not route or route[0]=='/' else []
+        ret = ['/'] if not route or route[0] == '/' else []
         params = []
         filters = []
         for part, param, filter, filter_args, filter_selector in cls.parse_route_iter(route):
-            if not part: # it is param or/and filter
+            if not part:  # it is param or/and filter
                 part = '\r'
                 params.append(param)
                 filters.append(cls.make_filter(filter, filter_args))
                 if filter_selector:
                     part += filter_selector
             ret.append(part)
-        #return '/'.join(ret), params, filters
+        # return '/'.join(ret), params, filters
         return ''.join(ret), params, filters
+
 
 class RadiRouter:
     parse_route = staticmethod(Route.parse_route)
@@ -236,7 +238,7 @@ class RadiRouter:
         self.routes = []
 
     @classmethod
-    def to_pattern(cls,  route):
+    def to_pattern(cls, route):
         return cls.parse_route(route)[0]
 
     def match(self, rule = None, filters = None, *, route_pattern = None, get_hooks = False):
@@ -255,7 +257,7 @@ class RadiRouter:
                 route_pattern = rule
 
         route_pattern = route_pattern.lstrip('/')
-        node, mismatch, i, param_idx, stack =  self.radidict._match(route_pattern, param_filters = filters)
+        node, mismatch, i, param_idx, stack = self.radidict._match(route_pattern, param_filters = filters)
         if not mismatch:
             return node[DATA] if not get_hooks else node[HOOKS]
 
@@ -264,7 +266,7 @@ class RadiRouter:
             method = [method.upper()]
         else:
             method = [_.upper() for _ in method]
-        route  = Route(rule, method, handler, name )
+        route = Route(rule, method, handler, name)
         end_point = self.match(route.pattern, route.filters)
         if end_point:
             common_meth = list(set(end_point) & set(method))
@@ -274,21 +276,21 @@ class RadiRouter:
                 raise RouteBuildError(f'handlers already registred for: {sorted(common_meth)}')
         else:
             end_point = dict.fromkeys(method, route)
-            self.radidict.add(route.pattern.lstrip('/'), end_point, route.params_signature() )
+            self.radidict.add(route.pattern.lstrip('/'), end_point, route.params_signature())
             self.routes.append(route)
 
     def add_hook(self, rule, hook):
-        hooks = [hook]  if not isinstance(hook, (list, tuple)) else hook
+        hooks = [hook] if not isinstance(hook, (list, tuple)) else hook
         route_pattern, params, filters = self.parse_route(rule)
         route_hooks = self.match(route_pattern = route_pattern, get_hooks = True)
         if route_hooks is not None:
             route_hooks.extend(hooks)
         else:
-            params = {name:[False, filter] for name, filter in zip(params, filters)}
+            params = {name: [False, filter] for name, filter in zip(params, filters)}
             self.radidict.add_hooks(route_pattern.lstrip('/'), hooks, params)
 
     def remove_hook(self, rule = None, hook = None, *, route_pattern = None):
-        hooks = hook  if isinstance(hook, (list, tuple)) else [hook]
+        hooks = hook if isinstance(hook, (list, tuple)) else [hook]
         if rule is not None:
             route_pattern = self.to_pattern(rule)
         route_hooks = self.match(route_pattern = route_pattern, get_hooks = True)
@@ -310,7 +312,6 @@ class RadiRouter:
         allowed = ",".join(sorted(end_point))
         return None, [405, "Method not allowed.", allowed]
 
-
     def remove(self, rule = None, *, route_pattern = None):
         '''
         use '*' to remove whole route-branch
@@ -322,11 +323,8 @@ class RadiRouter:
         if rule is not None:
             route_pattern = self.to_pattern(rule)
         self.radidict.remove(route_pattern.lstrip('/'))
-        if route_pattern[-1]  == '*':
+        if route_pattern[-1] == '*':
             route_pattern = route_pattern[:-1]
             [self.routes.remove(r) for r in self.routes if r.pattern.startswith(route_pattern)]
         else:
             [self.routes.remove(r) for r in self.routes if r.pattern == route_pattern]
-
-
-

@@ -1,13 +1,16 @@
 
+import time
+import email.utils
 import http.client as httplib
 from http.cookies import SimpleCookie
 from .helpers import (
-    ts_props, tob, touni,
+    ts_props, touni,
     HeaderDict, HeaderProperty,
     cookie_encode,
     PBottleException
 )
 from datetime import date as datedate, datetime, timedelta
+
 
 def http_date(value):
     if isinstance(value, (datedate, datetime)):
@@ -18,6 +21,7 @@ def http_date(value):
         value = time.strftime("%a, %d %b %Y %H:%M:%S GMT", value)
     return value
 
+
 def parse_date(ims):
     """ Parse rfc1123, rfc850 and asctime timestamps and return UTC epoch. """
     try:
@@ -25,6 +29,7 @@ def parse_date(ims):
         return time.mktime(ts[:8] + (0,)) - (ts[9] or 0) - time.timezone
     except (TypeError, ValueError, IndexError, OverflowError):
         return None
+
 
 class BaseResponse:
     """ Storage class for a response body as well as headers and cookies.
@@ -45,7 +50,6 @@ class BaseResponse:
     default_status = 200
     default_content_type = 'text/html; charset=UTF-8'
     headers = HeaderDict()
-
 
     # Header blacklist for specific response codes
     # (rfc2616 section 10.2.3 and 10.3.5)
@@ -89,7 +93,7 @@ class BaseResponse:
         return iter(self.body)
 
     def close(self):
-        if (close:= getattr(self.body, 'close', None)):
+        if (close := getattr(self.body, 'close', None)):
             close()
 
     @property
@@ -117,14 +121,14 @@ class BaseResponse:
     def _get_status(self):
         return self._status_line
 
-    status = property(_get_status, _set_status, None,
+    status = property(
+        _get_status, _set_status, None,
         ''' A writeable property to change the HTTP response status. It accepts
             either a numeric code (100-999) or a string with a custom reason
             phrase (e.g. "404 Brain not found"). Both :data:`status_line` and
             :data:`status_code` are updated accordingly. The return value is
             always a status string. ''')
     del _get_status, _set_status
-
 
     @property
     def headerlist(self):
@@ -137,7 +141,7 @@ class BaseResponse:
             headers = (h for h in headers if h[0] not in bad_headers)
         out = [
             (name, val.encode('utf8').decode('latin1'))
-            for (name, vals) in headers \
+            for (name, vals) in headers
                 for val in (vals if isinstance(vals, list) else [vals])
         ]
         if self._cookies:
@@ -149,7 +153,8 @@ class BaseResponse:
 
     content_type = HeaderProperty('Content-Type')
     content_length = HeaderProperty('Content-Length', reader=int)
-    expires = HeaderProperty('Expires',
+    expires = HeaderProperty(
+        'Expires',
         reader=lambda x: datetime.utcfromtimestamp(parse_date(x)),
         writer=lambda x: http_date(x))
 
@@ -229,6 +234,7 @@ class BaseResponse:
             out.append('%s: %s' % (name.title(), value.strip()))
         return '\n'.join(out)
 
+
 @ts_props(
     '_status_line', '_status_code',
     '_headers', '_cookies', 'body',
@@ -237,13 +243,13 @@ class BaseResponse:
 class Response(BaseResponse):
     pass
 
+
 ###############################################################################
 # Exceptions & Commons ########################################################
 ###############################################################################
 class HTTPResponse(BaseResponse, PBottleException):
     def __init__(self, body='', status=None, headers=None, **more_headers):
         super().__init__(body, status, headers, **more_headers)
-
 
     def apply(self, response):
         response._status_code = self._status_code
@@ -254,22 +260,23 @@ class HTTPResponse(BaseResponse, PBottleException):
             response._cookies = self._cookies
         response.body = self.body
 
+
 class HTTPError(HTTPResponse):
     default_status = 500
+
     def __init__(self, status=None, body=None, exception=None, traceback=None,
                  **options):
         self.exception = exception
         self.traceback = traceback
         super().__init__(body, status, **options)
 
+
 #: A dict to map HTTP status codes (e.g. 404) to phrases (e.g. 'Not Found')
 HTTP_CODES = httplib.responses
-HTTP_CODES[418] = "I'm a teapot" # RFC 2324
-HTTP_CODES[422] = "Unprocessable Entity" # RFC 4918
+HTTP_CODES[418] = "I'm a teapot"  # RFC 2324
+HTTP_CODES[422] = "Unprocessable Entity"  # RFC 4918
 HTTP_CODES[428] = "Precondition Required"
 HTTP_CODES[429] = "Too Many Requests"
 HTTP_CODES[431] = "Request Header Fields Too Large"
 HTTP_CODES[511] = "Network Authentication Required"
-_HTTP_STATUS_LINES = dict((k, '%d %s'%(k,v)) for (k,v) in HTTP_CODES.items())
-
-
+_HTTP_STATUS_LINES = dict((k, '%d %s' % (k, v)) for (k, v) in HTTP_CODES.items())
