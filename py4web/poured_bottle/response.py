@@ -81,9 +81,7 @@ class BaseResponse:
         ''' Returns a copy of self. '''
         cls = cls or BaseResponse
         assert issubclass(cls, BaseResponse)
-        copy = cls()
-        copy.status = self.status
-        copy._headers = self.headers.copy().dict
+        copy = cls(status = self.status, headers = self.headers.copy().dict)
         if self._cookies:
             copy._cookies = SimpleCookie()
             copy._cookies.load(self._cookies.output(header=''))

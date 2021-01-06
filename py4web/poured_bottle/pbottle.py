@@ -20,7 +20,7 @@ from . import server_adapters
 
 __version__ = "0.0.1"
 
-HTTP_METHODS = 'DELETE GET HEAD OPTIONS PATCH POST PUT'.split(' ')
+HTTP_METHODS = 'DELETE GET HEAD OPTIONS PATCH POST PUT'.split()
 
 Request.mixin(request_mixin.mixin())
 
