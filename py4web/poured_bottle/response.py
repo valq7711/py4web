@@ -53,11 +53,6 @@ class BaseResponse:
 
     # Header blacklist for specific response codes
     # (rfc2616 section 10.2.3 and 10.3.5)
-    bad_headers = {
-        204: set(('Content-Type',)),
-        304: set(('Allow', 'Content-Encoding', 'Content-Language',
-                  'Content-Length', 'Content-Range', 'Content-Type',
-                  'Content-Md5', 'Last-Modified'))}
 
     def __init__(self, body='', status=None, headers=None, **more_headers):
         self._status_line = None
@@ -128,20 +123,28 @@ class BaseResponse:
             always a status string. ''')
     del _get_status, _set_status
 
+    bad_headers = {
+        204: set(('Content-Type',)),
+        304: set(('Allow', 'Content-Encoding', 'Content-Language',
+                  'Content-Length', 'Content-Range', 'Content-Type',
+                  'Content-Md5', 'Last-Modified'))}
+
     @property
     def headerlist(self):
         """ WSGI conform list of (header, value) tuples. """
-        headers = list(self._headers.items())
-        if 'Content-Type' not in self._headers:
-            headers.append(('Content-Type', self.default_content_type))
-        if self._status_code in self.bad_headers:
-            bad_headers = self.bad_headers[self._status_code]
+        headers = self._headers.items()
+        if (bad_headers := self.bad_headers.get(self._status_code)):
             headers = (h for h in headers if h[0] not in bad_headers)
+            need_ctype = False
+        else:
+            need_ctype = 'Content-Type' not in self._headers
         out = [
             (name, val.encode('utf8').decode('latin1'))
             for (name, vals) in headers
                 for val in (vals if isinstance(vals, list) else [vals])
         ]
+        if need_ctype:
+            out.append(('Content-Type', self.default_content_type))
         if self._cookies:
             for c in self._cookies.values():
                 out.append(
