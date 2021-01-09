@@ -193,8 +193,8 @@ def mixin():
             fp= self.body, environ= safe_env, keep_blank_values= True,
             encoding = 'utf8'
         )
-        # self['_cgi.FieldStorage'] = data #http://bugs.python.org/issue18394#msg207958
         with cgi.FieldStorage(**args) as data:
+            self['_cgi.FieldStorage'] = data  # http://bugs.python.org/issue18394#msg207958
             data = data.list or []
             for item in data:
                 if item.filename:
