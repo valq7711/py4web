@@ -49,10 +49,15 @@ class BaseResponse:
 
     default_status = 200
     default_content_type = 'text/html; charset=UTF-8'
-    headers = HeaderDict()
+
 
     # Header blacklist for specific response codes
     # (rfc2616 section 10.2.3 and 10.3.5)
+
+    def __new__(cls, *a, **kw):
+        self = super().__new__(cls, *a, **kw)
+        self.headers = HeaderDict()
+        return self
 
     def __init__(self, body='', status=None, headers=None, **more_headers):
         self._status_line = None

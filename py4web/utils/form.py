@@ -457,10 +457,10 @@ class Form(object):
                 if not post_vars.get("_delete"):
                     validated_vars = {}
                     for field in self.table:
-                        if not field.name in post_vars: 
+                        if not field.name in post_vars:
                             continue
                         if field.writable and field.type != "id":
-                            original_value = post_vars.getall(field.name)
+                            original_value = post_vars.get(field.name) #post_vars.getall(field.name)
                             if (
                                 isinstance(original_value, list)
                                 and len(original_value) == 1

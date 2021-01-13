@@ -109,6 +109,8 @@ def mixin():
             encoded POST or PUT request body. The result is returned as a
             :class:`FormsDict`. All keys and values are strings. File uploads
             are stored separately in :attr:`files`. """
+        if self.POST is None:
+            return None
         forms = FormsDict()
         for name, item in self.POST.items():
             if not isinstance(item, FileUpload):
