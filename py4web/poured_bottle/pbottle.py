@@ -115,7 +115,7 @@ class PBottle:
             raise HTTPError(*error)
         route, names, values, hooks = tmp
         param_values = []
-        params = [{n: v for n, v in zip(names, values) if n and (param_values.append(v) or True)}]
+        params = {n: v for n, v in zip(names, values) if n and (param_values.append(v) or True)}
         return route, params, param_values, hooks
 
     def add_route(self, rule, method, handler, name = None):
@@ -230,7 +230,7 @@ class PBottle:
                 environ['pbottle.route'] = route
                 environ['route.url_args'] = args
                 environ['route.hooks'] = route_hooks
-                return route(*values)
+                return route(**args)
             finally:
                 self.emit('after_request')
         except HTTPResponse as resp:
