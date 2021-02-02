@@ -12,8 +12,7 @@ import time
 from unicodedata import normalize
 
 
-class PBottleException(Exception):
-    """ A base class for exceptions used by bottle. """
+class OmbottException(Exception):
     pass
 
 
@@ -141,7 +140,7 @@ class NameSpace(types.SimpleNamespace):
 
 
 class FormsDict(dict):
-    ''' This :class:`MultiDict` subclass is used to store request form data.
+    ''' This :class:`dict` subclass is used to store request form data.
         Additionally to the normal dict-like item access methods (which return
         unmodified data as native strings), this container also supports
         attribute-like access to its values. Attributes are automatically de-
@@ -248,10 +247,6 @@ class WSGIHeaderDict(DictMixin):
         (2.x bytes or 3.x unicode) and keys are case-insensitive. If the WSGI
         environment contains non-native string values, these are de- or encoded
         using a lossless 'latin1' character set.
-
-        The API will remain stable even on changes to the relevant PEPs.
-        Currently PEP 333, 444 and 3333 are supported. (PEP 444 is the only one
-        that uses non-native strings.)
     '''
     #: List of keys that do not have a ``HTTP_`` prefix.
     cgikeys = ('CONTENT_TYPE', 'CONTENT_LENGTH')

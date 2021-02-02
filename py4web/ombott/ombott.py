@@ -60,7 +60,7 @@ def run(app=None, server='wsgiref', host='127.0.0.1', port=8080,
         server = server(host=host, port=port, **kargs)
         server.quiet = server.quiet or quiet
         if not server.quiet:
-            _stderr("PBottle v%s server starting up (using %s)...\n" % (__version__, repr(server)))
+            _stderr("Ombott v%s server starting up (using %s)...\n" % (__version__, repr(server)))
             _stderr("Listening on http://%s:%d/\n" % (server.host, server.port))
             _stderr("Hit Ctrl-C to quit.\n\n")
         server.run(app)
@@ -85,11 +85,7 @@ def with_method_shortcuts(methods):
 
 
 @with_method_shortcuts(HTTP_METHODS)
-class PBottle:
-    """ Each Bottle object represents a single, distinct web application and
-        consists of routes, callbacks
-        Instances are callable WSGI applications.
-    """
+class Ombott:
 
     def __init__(self):
         self.router = RadiRouter()
@@ -215,19 +211,19 @@ class PBottle:
         response = self.response
         request = self.request
 
-        path = environ['pbottle.raw_path'] = environ['PATH_INFO']
+        path = environ['ombott.raw_path'] = environ['PATH_INFO']
         try:
             environ['PATH_INFO'] = path.encode('latin1').decode('utf8')
         except UnicodeError:
             return HTTPError(400, 'Invalid path string. Expected UTF-8')
         try:  # init thread
-            environ['pbottle.app'] = self
+            environ['ombott.app'] = self
             request.__init__(environ)
             response.__init__()
             try:  # routing
                 self.emit('before_request')
                 route, args, values, route_hooks = self.to_route(environ)
-                environ['pbottle.route'] = route
+                environ['ombott.route'] = route
                 environ['route.url_args'] = args
                 environ['route.hooks'] = route_hooks
                 return route(**args)
@@ -324,7 +320,6 @@ class PBottle:
             return new_iter
 
     def wsgi(self, environ, start_response):
-        """ The bottle WSGI-interface. """
 
         env = self.request.environ
         if (domain_map := getattr(config, 'domain_map', None)):
@@ -359,7 +354,6 @@ class PBottle:
             return [tob(err)]
 
     def __call__(self, environ, start_response):
-        ''' Each instance of :class:'Bottle' is a WSGI application. '''
         return self.wsgi(environ, start_response)
 
 
@@ -476,7 +470,7 @@ error = None
 
 def app_make():
     global app, route, on_route, request, response, error
-    app = PBottle()
+    app = Ombott()
     route = app.route
     on_route = app.on_route
     request = app.request

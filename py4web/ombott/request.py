@@ -181,7 +181,7 @@ class BaseRequest:
         self.__subscribers__ = {}
         self.on(
             'env_changed',
-            lambda request, k, v: request.environ.pop('bottle.request.body', None) if k == 'wsgi.input' else None
+            lambda request, k, v: request.environ.pop('ombott.request.body', None) if k == 'wsgi.input' else None
         )
         return self
 
@@ -190,9 +190,9 @@ class BaseRequest:
         #: The wrapped WSGI environ dictionary. This is the only real attribute.
         #: All other attributes actually are read-only properties.
         self.environ = {} if environ is None else environ
-        self.environ['bottle.request'] = self
+        self.environ['ombott.request'] = self
 
-    @cache_in('environ[ bottle.request.body ]', read_only=True)
+    @cache_in('environ[ ombott.request.body ]', read_only=True)
     def _body(self):
         body = _body_read(
             self.environ['wsgi.input'].read,
@@ -243,7 +243,7 @@ class BaseRequest:
     def __setitem__(self, key, value):
         """ Change an environ value and clear all caches that depend on it. """
 
-        if self.environ.get('bottle.request.readonly'):
+        if self.environ.get('ombott.request.readonly'):
             raise KeyError('The environ dictionary is read-only.')
 
         self.environ[key] = value
@@ -256,7 +256,7 @@ class BaseRequest:
         ''' Search in self.environ for additional user defined attributes. '''
 
         try:
-            var = self.environ['bottle.request.ext.%s' % name]
+            var = self.environ['ombott.request.ext.%s' % name]
             return var.__get__(self) if hasattr(var, '__get__') else var
         except KeyError:
             raise AttributeError('Attribute %r not defined.' % name)
@@ -264,7 +264,7 @@ class BaseRequest:
     def __setattr__(self, name, value):
         if name in ('environ', '__subscribers__'):
             return object.__setattr__(self, name, value)
-        self.environ['bottle.request.ext.%s' % name] = value
+        self.environ['ombott.request.ext.%s' % name] = value
         return value
 
 

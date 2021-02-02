@@ -1,5 +1,5 @@
 import logging
-from bottle import ServerAdapter
+from .ombott.server_adapters import ServerAdapter
 
 __all__ = ['geventWebSocketServer', 'wsgirefThreadingServer']
 

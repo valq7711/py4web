@@ -7,7 +7,7 @@ from .helpers import (
     ts_props, touni,
     HeaderDict, HeaderProperty,
     cookie_encode,
-    PBottleException
+    OmbottException
 )
 from datetime import date as datedate, datetime, timedelta
 
@@ -253,7 +253,7 @@ class Response(BaseResponse):
 ###############################################################################
 # Exceptions & Commons ########################################################
 ###############################################################################
-class HTTPResponse(BaseResponse, PBottleException):
+class HTTPResponse(BaseResponse, OmbottException):
     def __init__(self, body='', status=None, headers=None, **more_headers):
         super().__init__(body, status, headers, **more_headers)
 

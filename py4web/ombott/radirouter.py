@@ -1,5 +1,5 @@
 from .radidict import RadiDict, DATA, HOOKS
-from .helpers import PBottleException
+from .helpers import OmbottException
 import re
 
 
@@ -8,7 +8,7 @@ import re
 ###############################################################################
 
 
-class RouteError(PBottleException):
+class RouteError(OmbottException):
     """ This is a base class for all routing related exceptions """
 
     def __init__(self, *args, **kw):

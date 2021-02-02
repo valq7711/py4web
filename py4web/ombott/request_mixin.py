@@ -32,7 +32,7 @@ def on_env_changed(request, key, v):
     elif key.startswith('HTTP_'):
         todelete = ('headers', 'cookies')
     for key in todelete:
-        request.environ.pop('bottle.request.' + key, None)
+        request.environ.pop('ombott.request.' + key, None)
 
 
 def mixin():
@@ -40,14 +40,13 @@ def mixin():
     def __new__(self, *a, **kw):
         self.on('env_changed', on_env_changed)
 
-    @cache_in('environ[ pbottle.app ]', read_only=True)
+    @cache_in('environ[ ombott.app ]', read_only=True)
     def app(self):
-        ''' Bottle application handling this request. '''
         raise RuntimeError('This request is not connected to an application.')
 
-    @cache_in('environ[ pbottle.route ]', read_only=True)
+    @cache_in('environ[ ombott.route ]', read_only=True)
     def route(self):
-        """ The bottle :class:`Route` object that matches this request. """
+        """ The ombott :class:`Route` object that matches this request. """
         raise RuntimeError('This request is not connected to a route.')
 
     @cache_in('environ[ route.url_args ]', read_only=True)
@@ -66,13 +65,13 @@ def mixin():
         ''' The ``REQUEST_METHOD`` value as an uppercase string. '''
         return self.environ.get('REQUEST_METHOD', 'GET').upper()
 
-    @cache_in('environ[ bottle.request.headers ]', read_only=True)
+    @cache_in('environ[ ombott.request.headers ]', read_only=True)
     def headers(self):
         ''' A :class:`WSGIHeaderDict` that provides case-insensitive access to
             HTTP request headers. '''
         return WSGIHeaderDict(self.environ)
 
-    @cache_in('environ[ bottle.request.cookies ]', read_only=True)
+    @cache_in('environ[ ombott.request.cookies ]', read_only=True)
     def cookies(self):
         """ Cookies parsed into a :class:`FormsDict`. Signed cookies are NOT
             decoded. Use :meth:`get_cookie` if you expect signed cookies. """
@@ -90,7 +89,7 @@ def mixin():
             return dec[1] if dec and dec[0] == key else default
         return value or default
 
-    @cache_in('environ[ bottle.request.query ]', read_only=True)
+    @cache_in('environ[ ombott.request.query ]', read_only=True)
     def query(self):
         ''' The :attr:`query_string` parsed into a :class:`FormsDict`. These
             values are sometimes called "URL arguments" or "GET parameters", but
@@ -100,10 +99,10 @@ def mixin():
         ret = FormsDict()
         if (qs := env.get('QUERY_STRING', '')):
             _parse_qsl(qs, setitem = ret.__setitem__)
-        env['bottle.get'] = ret
+        env['ombott.get'] = ret
         return ret
 
-    @cache_in('environ[ bottle.request.forms ]', read_only=True)
+    @cache_in('environ[ ombott.request.forms ]', read_only=True)
     def forms(self):
         """ Form values parsed from an `url-encoded` or `multipart/form-data`
             encoded POST or PUT request body. The result is returned as a
@@ -117,7 +116,7 @@ def mixin():
                 forms[name] = item
         return forms
 
-    @cache_in('environ[ bottle.request.params ]', read_only=True)
+    @cache_in('environ[ ombott.request.params ]', read_only=True)
     def params(self):
         """ A :class:`FormsDict` with the combined values of :attr:`query` and
             :attr:`forms`. File uploads are stored in :attr:`files`. """
@@ -126,7 +125,7 @@ def mixin():
         params.update(self.forms)
         return params
 
-    @cache_in('environ[ bottle.request.files ]', read_only=True)
+    @cache_in('environ[ ombott.request.files ]', read_only=True)
     def files(self):
         """ File uploads parsed from `multipart/form-data` encoded POST or PUT
             request body. The values are instances of :class:`FileUpload`.
@@ -138,12 +137,12 @@ def mixin():
                 files[name] = item
         return files
 
-    @cache_in('environ[ bottle.request.ctype ]', read_only=True)
+    @cache_in('environ[ ombott.request.ctype ]', read_only=True)
     def ctype(self):
         ctype = self.environ.get('CONTENT_TYPE', '').lower().split(';')
         return [t.strip() for t in ctype]
 
-    @cache_in('environ[ bottle.request.json ]', read_only=True)
+    @cache_in('environ[ ombott.request.json ]', read_only=True)
     def json(self):
         ''' If the ``Content-Type`` header is ``application/json``, this
             property holds the parsed content of the request body. Only requests
@@ -169,7 +168,7 @@ def mixin():
     #: An alias for :attr:`query`.
     GET = query
 
-    @cache_in('environ[ bottle.request.post ]', read_only=True)
+    @cache_in('environ[ ombott.request.post ]', read_only=True)
     def POST(self):
         """ The values of :attr:`forms` and :attr:`files` combined into a single
             :class:`FormsDict`. Values are either strings (form values) or
@@ -208,7 +207,7 @@ def mixin():
                     post[item.name] = item.value
         return post
 
-    @cache_in('environ[ bottle.request.url ]', read_only=True)
+    @cache_in('environ[ ombott.request.url ]', read_only=True)
     def url(self):
         """ The full request URI including hostname and scheme. If your app
             lives behind a reverse proxy or load balancer and you get confusing
@@ -216,7 +215,7 @@ def mixin():
             correctly. """
         return self.urlparts.geturl()
 
-    @cache_in('environ[ bottle.request.urlparts ]', read_only=True)
+    @cache_in('environ[ ombott.request.urlparts ]', read_only=True)
     def urlparts(self):
         ''' The :attr:`url` string as an :class:`urlparse.SplitResult` tuple.
             The tuple contains (scheme, host, path, query_string and fragment),
@@ -234,7 +233,7 @@ def mixin():
         path = urlquote(self.fullpath)
         return UrlSplitResult(http, host, path, env.get('QUERY_STRING'), '')
 
-    @cache_in('environ[ bottle.request.fullpath ]', read_only=True)
+    @cache_in('environ[ ombott.request.fullpath ]', read_only=True)
     def fullpath(self):
         """ Request path including :attr:`script_name` (if present). """
         appname = self.environ.get('HTTP_X_PY4WEB_APPNAME', '/')
@@ -246,7 +245,7 @@ def mixin():
             and ``#``) as a string. """
         return self.environ.get('QUERY_STRING', '')
 
-    @cache_in('environ[ bottle.request.script_name ]', read_only=True)
+    @cache_in('environ[ ombott.request.script_name ]', read_only=True)
     def script_name(self):
         ''' The initial portion of the URL's `path` that was removed by a higher
             level (server or routing middleware) before the application was
@@ -256,14 +255,14 @@ def mixin():
         script_name = env_get('SCRIPT_NAME', env_get('HTTP_X_SCRIPT_NAME', '')).strip('/')
         return '/' + script_name + '/' if script_name else '/'
 
-    @cache_in('environ[ bottle.request.content_length ]', read_only=True)
+    @cache_in('environ[ ombott.request.content_length ]', read_only=True)
     def content_length(self):
         ''' The request body length as an integer. The client is responsible to
             set this header. Otherwise, the real length of the body is unknown
             and -1 is returned. In this case, :attr:`body` will be empty. '''
         return int(self.environ.get('CONTENT_LENGTH') or -1)
 
-    @cache_in('environ[ bottle.request.content_type ]', read_only=True)
+    @cache_in('environ[ ombott.request.content_type ]', read_only=True)
     def content_type(self):
         ''' The Content-Type header as a lowercase-string (default: empty). '''
         return self.environ.get('CONTENT_TYPE', '').lower()
@@ -306,7 +305,7 @@ def mixin():
         if ruser: return (ruser, None)
         return None
 
-    @cache_in('environ[ bottle.request.remote_route ]', read_only=True)
+    @cache_in('environ[ ombott.request.remote_route ]', read_only=True)
     def remote_route(self):
         """ A list of all IPs that were involved in this request, starting with
             the client IP and followed by zero or more proxies. This does only
