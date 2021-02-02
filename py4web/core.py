@@ -727,7 +727,7 @@ class action:
                         # it should be [obj.on_error(status) for obj in fixtures]
                         # but it breaks users fixtures
                         # `def on_error(status = None):` - cost nothing, but we have  `def on_error():`
-                    raise               
+                    raise
                 except Exception:
                     [obj.on_error() for obj in fixtures]
                     raise
@@ -1004,9 +1004,14 @@ class Reloader:
 
     @staticmethod
     def clear_routes(app_name=''):
+        if app_name and app_name[0] != '/':
+            app_name = '/' + app_name
         routes = app_name + '/*'
         app = bottle.default_app()
         app.router.remove(routes)
+        if app_name:
+            app.router.remove(app_name)
+
 
     @staticmethod
     def import_apps():
