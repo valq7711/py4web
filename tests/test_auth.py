@@ -24,8 +24,8 @@ class TestAuth(unittest.TestCase):
 
     def action(self, name, method, query, data):
         request.environ['REQUEST_METHOD'] = method
-        request.environ['bottle.request.query'] = query
-        request.environ['bottle.request.json'] = data
+        request.environ['ombott.request.query'] = query
+        request.environ['ombott.request.json'] = data
         # we break a symmetry below. should fix in auth.py
         if name.startswith('api/'):
             return getattr(AuthAPI, name[4:])(self.auth)
