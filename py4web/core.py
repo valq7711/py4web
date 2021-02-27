@@ -767,7 +767,11 @@ class action:
                 return ret
             except HTTP as http:
                 response.status = http.status
-                return getattr(http, "body", "")
+                ret = getattr(http, "body", "")
+                http_headers = getattr(http, 'headers', None)
+                if http_headers:
+                    response.headers.update(http_headers)
+                return ret
             except bottle.HTTPResponse:
                 raise
             except Exception:
@@ -1244,8 +1248,8 @@ def watch(apps_folder, server_config, mode="sync"):
     if server_config["number_workers"] > 1:
         click.echo("--watch option has no effect in multi-process environment \n")
         return
-    elif server_config["server"].startswith("wsgiref"):
-        # default wsgi server block the main thread so we open a new thread for the file watcher
+    elif server_config["server"].startswith(('wsgiref', 'rocket', 'waitress')):
+        # these servers block the main thread so we open a new thread for the file watcher
         threading.Thread(
             target=watch_folder_event_loop, args=(apps_folder,), daemon=True
         ).start()
@@ -1303,8 +1307,6 @@ def start_server(args):
     if args["watch"] != "off":
         watch(apps_folder, server_config, args["watch"])
 
-    # DEBUG
-    #params["server"] = "wsgiref"
     bottle.run(**params)
 
 
@@ -1538,7 +1540,7 @@ def new_app(apps_folder, app_name, scaffold_zip):
     "-s",
     "--server",
     default="default",
-    type=click.Choice(["default", "wsgiref", "tornado", "gunicorn", "gevent"] + server_adapters.__all__),
+    type=click.Choice(["default", "wsgiref", "tornado", "gunicorn", "gevent", "waitress"] + server_adapters.__all__),
     help="server to use",
     show_default=True,
 )
